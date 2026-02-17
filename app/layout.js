@@ -14,15 +14,15 @@ export default function RootLayout({ children }) {
     <html lang="pt-BR">
       <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center py-10 px-4 antialiased">
         <AuthProvider>
-          <AuthProvider>
-            <Header />
 
-            <Navbar />
+          <Header />
 
-            <main className="w-full max-w-6xl">
-              {children}
-            </main>
-          </AuthProvider>
+          <Navbar />
+
+          <main className="w-full max-w-6xl">
+            {children}
+          </main>
+        </AuthProvider>
       </body>
     </html>
   );
