@@ -97,12 +97,12 @@ export default function ProductList() {
     // Auto-calculate selling price when cost or margin changes
     const calculateSellingPrice = (cost, margin) => {
         if (!cost || !margin) return ''
-        const costVal = parseFloat(cost)
+        const costVal = parseCurrency(cost)
         const marginVal = parseFloat(margin)
         if (isNaN(costVal) || isNaN(marginVal)) return ''
 
         const selling = costVal * (1 + marginVal / 100)
-        return selling.toFixed(2)
+        return formatCurrency(selling)
     }
 
     const handleCostChange = (val) => {
