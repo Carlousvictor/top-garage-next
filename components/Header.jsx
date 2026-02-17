@@ -10,7 +10,7 @@ export default function Header() {
 
     return (
         <header className="flex-shrink-0">
-            <div className="relative w-48 h-16">
+            <div className="relative w-72 h-24">
                 <Image
                     src="/logo.png"
                     alt="Top Garage"
