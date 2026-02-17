@@ -50,19 +50,17 @@ export default function LoginPage() {
 
                 {/* Header Section */}
                 <div className="pt-8 pb-6 px-8 text-center border-b border-neutral-800 bg-black/40">
-                    <div className="relative w-48 h-24 mx-auto mb-4">
-                        {/* Ensure width/height ratio matches your logo */}
-                        <Image
-                            src="/logo.png"
-                            alt="Top Garage RJ"
-                            fill
-                            className="object-contain drop-shadow-lg"
-                            priority
-                        />
+                    <div className="text-center mb-6">
+                        <div className="relative w-48 h-24 mx-auto">
+                            <Image
+                                src="/logo.png"
+                                alt="Top Garage RJ"
+                                fill
+                                className="object-contain drop-shadow-lg"
+                                priority
+                            />
+                        </div>
                     </div>
-                    <h2 className="text-xl font-bold text-gray-100 tracking-wider uppercase">
-                        Acesso Restrito
-                    </h2>
                     <p className="text-xs text-red-500 font-medium mt-1 uppercase tracking-widest">
                         Sistema de Gestão Automotiva
                     </p>
