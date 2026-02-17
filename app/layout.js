@@ -1,5 +1,6 @@
 import "./globals.css";
 import Navbar from '../components/Navbar';
+import Header from '../components/Header';
 import { AuthProvider } from '@/context/AuthContext';
 import Image from 'next/image';
 
@@ -13,17 +14,15 @@ export default function RootLayout({ children }) {
     <html lang="pt-BR">
       <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center py-10 px-4 antialiased">
         <AuthProvider>
-          <header className="mb-10 text-center">
-            {/* Using standard img tag for simplicity or Next Image if configured */}
-            <img src="/logo.png" alt="Top Garage" className="h-48 mx-auto object-contain" />
-          </header>
+          <AuthProvider>
+            <Header />
 
-          <Navbar />
+            <Navbar />
 
-          <main className="w-full max-w-6xl">
-            {children}
-          </main>
-        </AuthProvider>
+            <main className="w-full max-w-6xl">
+              {children}
+            </main>
+          </AuthProvider>
       </body>
     </html>
   );
