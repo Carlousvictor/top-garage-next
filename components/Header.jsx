@@ -9,8 +9,8 @@ export default function Header() {
     if (pathname === '/login') return null
 
     return (
-        <header className="flex-shrink-0">
-            <div className="relative w-72 h-24">
+        <header className="flex-shrink-0 ml-4">
+            <div className="relative w-96 h-32">
                 <Image
                     src="/logo.png"
                     alt="Top Garage"
