@@ -146,15 +146,7 @@ export default function LoginPage() {
                     </button>
                 </form>
 
-                {/* Footer Section */}
-                <div className="bg-black/40 px-8 py-4 text-center border-t border-neutral-800">
-                    <p className="text-xs text-gray-500">
-                        Não possui acesso?{' '}
-                        <Link href="/signup" className="font-bold text-red-500 hover:text-red-400 hover:underline transition-colors">
-                            Solicite uma conta
-                        </Link>
-                    </p>
-                </div>
+
             </div>
 
             {/* Branding Footer */}
