@@ -20,8 +20,8 @@ async function createAdmin() {
 
     const supabase = createClient(supabaseUrl, serviceRoleKey || supabaseKey)
 
-    const email = 'admin@topgarage.com'
-    const password = 'toP326'
+    const email = 'admin@topgarage.local'
+    const password = 'topG326'
 
     console.log(`Attempting to create user: ${email}`)
 
