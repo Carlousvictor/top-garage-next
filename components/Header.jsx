@@ -9,13 +9,13 @@ export default function Header() {
     if (pathname === '/login') return null
 
     return (
-        <header className="mb-10 text-center">
-            <div className="relative w-full h-48 mx-auto">
+        <header className="flex-shrink-0">
+            <div className="relative w-48 h-16">
                 <Image
                     src="/logo.png"
                     alt="Top Garage"
                     fill
-                    className="object-contain"
+                    className="object-contain object-left"
                     priority
                 />
             </div>

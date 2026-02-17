@@ -1,9 +1,11 @@
 "use client"
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '../context/AuthContext'
 
 export default function Navbar() {
     const pathname = usePathname()
+    const { signOut } = useAuth()
 
     if (pathname === '/login' || pathname === '/signup') return null
 
@@ -23,7 +25,7 @@ export default function Navbar() {
     ]
 
     return (
-        <div className="mb-8 flex space-x-4 bg-neutral-900 p-1 rounded-lg border border-red-900/30 overflow-x-auto max-w-full">
+        <div className="flex space-x-4 bg-neutral-900 p-1 rounded-lg border border-red-900/30 overflow-x-auto max-w-full items-center">
             {navItems.map((item) => (
                 <Link
                     key={item.path}
@@ -36,6 +38,12 @@ export default function Navbar() {
                     {item.name}
                 </Link>
             ))}
+            <button
+                onClick={signOut}
+                className="px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 border border-transparent hover:border-red-500/50"
+            >
+                Sair
+            </button>
         </div>
     )
 }

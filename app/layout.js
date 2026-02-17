@@ -15,9 +15,10 @@ export default function RootLayout({ children }) {
       <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center py-10 px-4 antialiased">
         <AuthProvider>
 
-          <Header />
-
-          <Navbar />
+          <div className="w-full max-w-6xl flex flex-col md:flex-row items-center gap-6 mb-8">
+            <Header />
+            <Navbar />
+          </div>
 
           <main className="w-full max-w-6xl">
             {children}
