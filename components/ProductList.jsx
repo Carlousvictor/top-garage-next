@@ -45,7 +45,11 @@ export default function ProductList() {
     }
 
     const handleEdit = (product) => {
-        setCurrentProduct(product)
+        setCurrentProduct({
+            ...product,
+            cost_price: formatCurrency(product.cost_price),
+            selling_price: formatCurrency(product.selling_price)
+        })
         setIsEditing(true)
     }
 
@@ -65,6 +69,31 @@ export default function ProductList() {
 
 
 
+    // Helper to format currency (e.g., 1250.50 -> R$ 1.250,50)
+    const formatCurrency = (value) => {
+        if (value === '' || value === null || value === undefined) return ''
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+    }
+
+    // Helper to format input value as user types (money mask)
+    const formatInputCurrency = (value) => {
+        if (!value) return ''
+        // Remove everything that is not a digit
+        const numericValue = value.toString().replace(/\D/g, '')
+        // Convert to float (cents)
+        const floatValue = parseFloat(numericValue) / 100
+        return floatValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    }
+
+    // Helper to parse currency string back to float (e.g., R$ 1.250,50 -> 1250.50)
+    const parseCurrency = (value) => {
+        if (!value) return 0
+        if (typeof value === 'number') return value
+        // Remove all non-digits
+        const numericValue = value.toString().replace(/\D/g, '')
+        return parseFloat(numericValue) / 100
+    }
+
     // Auto-calculate selling price when cost or margin changes
     const calculateSellingPrice = (cost, margin) => {
         if (!cost || !margin) return ''
@@ -77,7 +106,7 @@ export default function ProductList() {
     }
 
     const handleCostChange = (val) => {
-        const newCost = val
+        const newCost = formatInputCurrency(val)
         const newSelling = calculateSellingPrice(newCost, currentProduct.profit_margin)
         setCurrentProduct(prev => ({
             ...prev,
@@ -112,8 +141,8 @@ export default function ProductList() {
                 name: currentProduct.name,
                 sku: currentProduct.sku,
                 description: currentProduct.description,
-                cost_price: parseFloat(currentProduct.cost_price || 0),
-                selling_price: parseFloat(currentProduct.selling_price || 0),
+                cost_price: parseCurrency(currentProduct.cost_price),
+                selling_price: parseCurrency(currentProduct.selling_price),
                 quantity: parseInt(currentProduct.quantity || 0),
                 supplier_id: currentProduct.supplier_id || null
             }
@@ -202,8 +231,8 @@ export default function ProductList() {
                                         <td className={`px-6 py-4 text-center font-bold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-500'}`}>
                                             {product.quantity}
                                         </td>
-                                        <td className="px-6 py-4">R$ {product.cost_price?.toFixed(2)}</td>
-                                        <td className="px-6 py-4 text-green-400 font-bold">R$ {product.selling_price?.toFixed(2)}</td>
+                                        <td className="px-6 py-4">{formatCurrency(product.cost_price)}</td>
+                                        <td className="px-6 py-4 text-green-400 font-bold">{formatCurrency(product.selling_price)}</td>
                                         <td className="px-6 py-4 text-right">
                                             <button onClick={() => handleEdit(product)} className="text-blue-400 hover:text-blue-300 mr-4">Editar</button>
                                             <button onClick={() => handleDelete(product.id)} className="text-red-500 hover:text-red-400">Excluir</button>
@@ -251,8 +280,7 @@ export default function ProductList() {
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Preço de Custo (R$)</label>
                             <input
-                                type="number"
-                                step="0.01"
+                                type="text"
                                 required
                                 value={currentProduct.cost_price}
                                 onChange={e => handleCostChange(e.target.value)}
@@ -273,11 +301,10 @@ export default function ProductList() {
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Preço de Venda (R$)</label>
                             <input
-                                type="number"
-                                step="0.01"
+                                type="text"
                                 required
                                 value={currentProduct.selling_price}
-                                onChange={e => setCurrentProduct({ ...currentProduct, selling_price: e.target.value })}
+                                onChange={e => setCurrentProduct({ ...currentProduct, selling_price: formatInputCurrency(e.target.value) })}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
                         </div>
