@@ -2,11 +2,13 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '../context/AuthContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 
 export default function ServiceOrderForm({ order }) {
     const supabase = createClient()
     const router = useRouter()
+    const { companyId } = useAuth()
 
     // Fallback if onCancel not passed -> use router.back() or push to /os
     const onCancel = () => router.push('/os')
@@ -15,77 +17,69 @@ export default function ServiceOrderForm({ order }) {
         router.push('/os')
     }
     const [loading, setLoading] = useState(false)
-    const [clients, setClients] = useState([])
-    const [products, setProducts] = useState([])
-    const [services, setServices] = useState([])
-
-    // Form States
     const [clientId, setClientId] = useState(order?.client_id || '')
     const [plate, setPlate] = useState(order?.vehicle_plate || '')
     const [brand, setBrand] = useState(order?.vehicle_brand || '')
     const [model, setModel] = useState(order?.vehicle_model || '')
     const [status, setStatus] = useState(order?.status || 'Aberto')
     const [observation, setObservation] = useState(order?.observation || '')
+    const [items, setItems] = useState([]) // Will fetch later if edit
 
-    // Items
-    const [items, setItems] = useState([])
+    const [clients, setClients] = useState([])
+    const [products, setProducts] = useState([])
+    const [services, setServices] = useState([])
+
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedService, setSelectedService] = useState('')
 
     useEffect(() => {
-        fetchDependencies()
-        if (order) {
-            fetchOrderItems(order.id)
+        const fetchData = async () => {
+            const { data: clientsData } = await supabase.from('clients').select('*').order('name')
+            setClients(clientsData || [])
+
+            const { data: productsData } = await supabase.from('products').select('*').order('name')
+            setProducts(productsData || [])
+
+            const { data: servicesData } = await supabase.from('services').select('*').order('name')
+            setServices(servicesData || [])
+
+            if (order?.id) {
+                const { data: itemsData } = await supabase
+                    .from('service_order_items')
+                    .select('*')
+                    .eq('service_order_id', order.id)
+                setItems(itemsData || [])
+            }
         }
-    }, [order])
-
-    const fetchDependencies = async () => {
-        const { data: clientsData } = await supabase.from('clients').select('*')
-        const { data: productsData } = await supabase.from('products').select('*')
-        const { data: servicesData } = await supabase.from('services').select('*')
-
-        setClients(clientsData || [])
-        setProducts(productsData || [])
-        setServices(servicesData || [])
-    }
-
-    const fetchOrderItems = async (orderId) => {
-        const { data, error } = await supabase
-            .from('service_order_items')
-            .select('*')
-            .eq('service_order_id', orderId)
-
-        if (data) setItems(data)
-    }
+        fetchData()
+    }, [order?.id])
 
     const handleAddItem = (type) => {
-        if (type === 'product' && !selectedProduct) return
-        if (type === 'service' && !selectedService) return
-
-        let newItem = null
-        if (type === 'product') {
-            const prod = products.find(p => p.id === parseInt(selectedProduct))
-            newItem = {
-                type: 'product',
-                product_id: prod.id,
-                description: prod.name,
-                quantity: 1,
-                unit_price: prod.selling_price || 0
+        if (type === 'product' && selectedProduct) {
+            const product = products.find(p => p.id === parseInt(selectedProduct))
+            if (product) {
+                setItems([...items, {
+                    type: 'product',
+                    product_id: product.id,
+                    description: product.name,
+                    quantity: 1,
+                    unit_price: product.selling_price
+                }])
+                setSelectedProduct('')
             }
-            setSelectedProduct('')
-        } else {
-            const serv = services.find(s => s.id === parseInt(selectedService))
-            newItem = {
-                type: 'service',
-                service_id: serv.id,
-                description: serv.name,
-                quantity: 1, // Usually hours or fixed
-                unit_price: serv.price || 0
+        } else if (type === 'service' && selectedService) {
+            const service = services.find(s => s.id === parseInt(selectedService))
+            if (service) {
+                setItems([...items, {
+                    type: 'service',
+                    service_id: service.id,
+                    description: service.name,
+                    quantity: 1,
+                    unit_price: service.price
+                }])
+                setSelectedService('')
             }
-            setSelectedService('')
         }
-
-        setItems([...items, newItem])
     }
 
     const handleRemoveItem = (index) => {
@@ -102,11 +96,18 @@ export default function ServiceOrderForm({ order }) {
         e.preventDefault()
         setLoading(true)
 
+        if (!companyId) {
+            alert('Erro: Empresa não identificada. Faça login novamente.')
+            setLoading(false)
+            return
+        }
+
         try {
             const total = calculateTotal()
 
             // 1. Upsert Order
             const orderData = {
+                company_id: companyId,
                 client_id: clientId || null,
                 vehicle_plate: plate,
                 vehicle_brand: brand,
@@ -119,6 +120,7 @@ export default function ServiceOrderForm({ order }) {
             let orderId = order?.id
 
             if (orderId) {
+                // Ensure we don't overwrite company_id just in case, or do ensures it stays same
                 await supabase.from('service_orders').update(orderData).eq('id', orderId)
             } else {
                 const { data, error } = await supabase.from('service_orders').insert([orderData]).select().single()
@@ -136,6 +138,7 @@ export default function ServiceOrderForm({ order }) {
                 // Insert new items
                 if (items.length > 0) {
                     const itemsToInsert = items.map(item => ({
+                        company_id: companyId,
                         service_order_id: orderId,
                         product_id: item.product_id || null,
                         service_id: item.service_id || null,
@@ -162,6 +165,12 @@ export default function ServiceOrderForm({ order }) {
     const handleFinish = async () => {
         if (!window.confirm('Deseja realmente finalizar a OS? Isso irá baixar o estoque e lançar a receita.')) return
         setLoading(true)
+
+        if (!companyId) {
+            alert('Erro: Empresa não identificada.')
+            setLoading(false)
+            return
+        }
 
         try {
             const total = calculateTotal()
@@ -195,6 +204,7 @@ export default function ServiceOrderForm({ order }) {
 
             // 3. Register Income
             await supabase.from('transactions').insert([{
+                company_id: companyId,
                 description: `Receita OS #${order.id} - Placa ${plate}`,
                 type: 'income',
                 category: 'Service',
@@ -211,6 +221,7 @@ export default function ServiceOrderForm({ order }) {
             setLoading(false)
         }
     }
+
 
     const handlePrint = () => {
         window.print()

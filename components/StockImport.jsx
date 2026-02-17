@@ -2,9 +2,11 @@
 import { useState } from 'react';
 import { XMLParser } from 'fast-xml-parser';
 import { createClient } from '../utils/supabase/client';
+import { useAuth } from '../context/AuthContext';
 
 export default function StockImport() {
     const supabase = createClient();
+    const { companyId } = useAuth();
 
     const [loading, setLoading] = useState(false);
     const [logs, setLogs] = useState([]);
@@ -15,6 +17,8 @@ export default function StockImport() {
     const addLog = (message, type = 'info') => {
         setLogs(prev => [...prev, { message, type, time: new Date().toLocaleTimeString() }]);
     };
+
+    // ... (keep handleFileUpload and parseNFeByPreview as is, just hidden in replacement)
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
@@ -89,17 +93,18 @@ export default function StockImport() {
     const handleItemChange = (index, field, value) => {
         const newItems = [...previewItems];
         newItems[index][field] = value;
-
-        // Recalculate margin if cost or price changes? 
-        // For now just update the value. If cost changes, maybe update selling price?
-        // Let's keep it simple: manual edit overrides auto-calc.
-
         setPreviewItems(newItems);
     };
 
     const confirmImport = async () => {
         if (!importData || previewItems.length === 0) return;
         setLoading(true);
+
+        if (!companyId) {
+            addLog('Erro: Empresa não identificada.', 'error');
+            setLoading(false);
+            return;
+        }
 
         try {
             // 1. Get/Create Supplier
@@ -108,14 +113,21 @@ export default function StockImport() {
                 .from('suppliers')
                 .select('id')
                 .eq('cnpj', importData.supplierCNPJ)
-                .single();
+                // Filter by company_id if suppliers are possibly shared or private. 
+                // Usually suppliers are global or company specific. Assuming company specific per multi-tenant rule.
+                .eq('company_id', companyId)
+                .maybeSingle(); // Changed to maybeSingle to avoid auto-error if multiple (shouldn't happen) or none
 
             if (supplier) {
                 supplierId = supplier.id;
             } else {
                 const { data: newSupplier, error: createError } = await supabase
                     .from('suppliers')
-                    .insert([{ name: importData.supplierName, cnpj: importData.supplierCNPJ }])
+                    .insert([{
+                        company_id: companyId,
+                        name: importData.supplierName,
+                        cnpj: importData.supplierCNPJ
+                    }])
                     .select()
                     .single();
                 if (createError) throw new Error(`Erro criar fornecedor: ${createError.message}`);
@@ -124,13 +136,14 @@ export default function StockImport() {
 
             // 2. Process Items
             for (const item of previewItems) {
-                // Check if product exists
+                // Check if product exists in this company
                 const { data: existingProd } = await supabase
                     .from('products')
                     .select('id, quantity')
                     .eq('sku', item.sku)
                     .eq('supplier_id', supplierId)
-                    .single();
+                    .eq('company_id', companyId)
+                    .maybeSingle();
 
                 if (existingProd) {
                     await supabase.from('products').update({
@@ -140,6 +153,7 @@ export default function StockImport() {
                     }).eq('id', existingProd.id);
                 } else {
                     await supabase.from('products').insert([{
+                        company_id: companyId,
                         sku: item.sku,
                         name: item.name,
                         cost_price: item.cost_price,
@@ -152,6 +166,7 @@ export default function StockImport() {
 
             // 3. Register Stock Entry linked to XML
             const { data: entryData, error: entryError } = await supabase.from('stock_entries').insert([{
+                company_id: companyId,
                 supplier_id: supplierId,
                 xml_key: importData.xmlKey,
                 total_value: importData.totalValue
@@ -161,6 +176,7 @@ export default function StockImport() {
 
             // 4. Register Expense Transaction
             await supabase.from('transactions').insert([{
+                company_id: companyId,
                 description: `Compra de Estoque - ${importData.supplierName}`,
                 type: 'expense',
                 category: 'Stock Purchase',
@@ -180,6 +196,7 @@ export default function StockImport() {
             setLoading(false);
         }
     };
+
 
     return (
         <div className="max-w-6xl mx-auto mt-10 p-6 bg-neutral-900 rounded-lg shadow-xl border border-neutral-800">

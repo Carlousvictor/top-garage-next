@@ -1,3 +1,4 @@
+"use client"
 import ServiceList from '@/components/ServiceList'
 
 export default function ServicesPage() {

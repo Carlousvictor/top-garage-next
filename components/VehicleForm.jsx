@@ -2,9 +2,11 @@
 import { useState } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
+import { useAuth } from '../context/AuthContext'
 
 export default function VehicleForm() {
     const supabase = createClient()
+    const { companyId } = useAuth()
 
     const [placa, setPlaca] = useState('')
     const [marca, setMarca] = useState('')
@@ -39,11 +41,23 @@ export default function VehicleForm() {
             return
         }
 
+        if (!companyId) {
+            setMessage('Erro: Empresa não identificada.')
+            return
+        }
+
         setLoading(true)
         const { data, error } = await supabase
             .from('vehicles')
             .insert([
-                { placa, marca, modelo, ano, cor },
+                {
+                    company_id: companyId,
+                    placa,
+                    marca,
+                    modelo,
+                    ano,
+                    cor
+                },
             ])
 
         if (error) {
@@ -58,6 +72,7 @@ export default function VehicleForm() {
         }
         setLoading(false)
     }
+
 
     return (
         <div className="max-w-md mx-auto mt-10 p-6 bg-neutral-900 rounded-lg shadow-xl border border-neutral-800">

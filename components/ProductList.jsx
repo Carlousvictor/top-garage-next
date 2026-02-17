@@ -1,9 +1,11 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
+import { useAuth } from '../context/AuthContext'
 
 export default function ProductList() {
     const supabase = createClient()
+    const { companyId } = useAuth()
 
     const [products, setProducts] = useState([])
     const [suppliers, setSuppliers] = useState([])
@@ -63,8 +65,15 @@ export default function ProductList() {
         e.preventDefault()
         setLoading(true)
 
+        if (!companyId) {
+            alert('Erro: Empresa não identificada.')
+            setLoading(false)
+            return
+        }
+
         try {
             const payload = {
+                company_id: companyId,
                 name: currentProduct.name,
                 sku: currentProduct.sku,
                 description: currentProduct.description,
@@ -75,7 +84,11 @@ export default function ProductList() {
             }
 
             if (currentProduct.id) {
-                await supabase.from('products').update(payload).eq('id', currentProduct.id)
+                // Remove company_id from update payload to rely on RLS/avoid overwrite if not needed
+                // But for safety and consistency with Insert, we can keep it or remove it. 
+                // Usually better to not change owner.
+                const { company_id, ...updatePayload } = payload
+                await supabase.from('products').update(updatePayload).eq('id', currentProduct.id)
             } else {
                 await supabase.from('products').insert([payload])
             }
@@ -88,6 +101,7 @@ export default function ProductList() {
             setLoading(false)
         }
     }
+
 
     const handleDelete = async (id) => {
         if (!window.confirm('Tem certeza que deseja excluir este produto?')) return

@@ -1,9 +1,11 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
+import { useAuth } from '../context/AuthContext'
 
 export default function FinancialDashboard() {
     const supabase = createClient()
+    const { companyId } = useAuth()
 
     const [activeTab, setActiveTab] = useState('overview') // 'overview', 'payable', 'receivable'
     const [transactions, setTransactions] = useState([])
@@ -96,8 +98,16 @@ export default function FinancialDashboard() {
     const handleCreateTransaction = async (e) => {
         e.preventDefault()
         setLoading(true)
+
+        if (!companyId) {
+            alert('Erro: Empresa não identificada.')
+            setLoading(false)
+            return
+        }
+
         try {
             const payload = {
+                company_id: companyId,
                 description: newTransaction.description,
                 amount: parseFloat(newTransaction.amount),
                 type: activeTab === 'payable' ? 'expense' : 'income',
@@ -108,6 +118,7 @@ export default function FinancialDashboard() {
             }
 
             const { error } = await supabase.from('transactions').insert([payload])
+
             if (error) throw error
 
             setShowForm(false)
