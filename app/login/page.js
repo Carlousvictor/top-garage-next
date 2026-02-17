@@ -2,7 +2,6 @@
 import { useState } from 'react'
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import Image from 'next/image'
 
 export default function LoginPage() {
@@ -18,7 +17,6 @@ export default function LoginPage() {
         setLoading(true)
         setError(null)
 
-        // Append dummy domain if not present (simple username login)
         const emailToUse = username.includes('@') ? username : `${username}@topgarage.com`
 
         try {
