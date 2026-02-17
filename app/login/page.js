@@ -19,7 +19,7 @@ export default function LoginPage() {
         setError(null)
 
         // Append dummy domain if not present (simple username login)
-        const emailToUse = username.includes('@') ? username : `${username}@topgarage.local`
+        const emailToUse = username.includes('@') ? username : `${username}@topgarage.com`
 
         try {
             const { error } = await supabase.auth.signInWithPassword({
