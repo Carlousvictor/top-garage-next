@@ -29,12 +29,12 @@ export default function Navbar() {
     ]
 
     return (
-        <div className="w-full flex justify-center space-x-4 bg-neutral-900 rounded-lg border border-red-900/30 items-center px-2 py-1">
+        <nav className="w-full md:w-auto flex-grow flex justify-start md:justify-end overflow-x-auto gap-2 bg-neutral-900 rounded-lg border border-red-900/30 items-center px-4 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
             {navItems.map((item) => (
                 <a
                     key={item.path}
                     href={item.path}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap ${isActive(item.path)
+                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${isActive(item.path)
                         ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
                         : 'text-gray-400 hover:text-white hover:bg-neutral-800'
                         }`}
@@ -44,10 +44,10 @@ export default function Navbar() {
             ))}
             <button
                 onClick={signOut}
-                className="px-4 py-2 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 border border-transparent hover:border-red-500/50"
+                className="px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 flex-shrink-0"
             >
                 Sair
             </button>
-        </div>
+        </nav>
     )
 }

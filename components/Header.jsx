@@ -11,15 +11,15 @@ export default function Header() {
     if (pathname === '/login') return null
 
     if (loading) {
-        return <header className="flex-shrink-0 h-32" />
+        return <header className="flex-shrink-0 h-16 w-48" />
     }
 
     const logoSrc = tenant?.logo_url || '/logo.png'
     const name = tenant?.name || 'Top Garage'
 
     return (
-        <header className="flex-shrink-0">
-            <div className="relative w-96 h-32">
+        <header className="flex-shrink-0 flex items-center h-16 w-48 shrink-0">
+            <div className="relative w-full h-full">
                 <Image
                     src={logoSrc}
                     alt={name}
