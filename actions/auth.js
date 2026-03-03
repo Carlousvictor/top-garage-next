@@ -37,10 +37,10 @@ export async function createUser(formData) {
         return { error: 'Não autorizado. Faça login novamente.' }
     }
 
-    // Fetch currentUser's profile to get company_id
+    // Fetch currentUser's profile to get tenant_id
     const { data: currentProfile, error: profileError } = await supabase
         .from('profiles')
-        .select('company_id, role')
+        .select('tenant_id, role')
         .eq('user_id', currentUser.id)
         .single()
 
@@ -55,7 +55,7 @@ export async function createUser(formData) {
        }
     */
 
-    const companyId = currentProfile.company_id
+    const tenantId = currentProfile.tenant_id
 
     // 2. Instantiate Supabase Admin Client (Service Role)
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -89,12 +89,12 @@ export async function createUser(formData) {
 
     const newUserId = authData.user.id
 
-    // 4. Create Profile linked to Company
+    // 4. Create Profile linked to Tenant
     const { error: insertError } = await supabaseAdmin
         .from('profiles')
         .insert([{
             user_id: newUserId,
-            company_id: companyId,
+            tenant_id: tenantId,
             role: role
         }])
 

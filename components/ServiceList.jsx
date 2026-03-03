@@ -3,25 +3,13 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 
-export default function ServiceList() {
+export default function ServiceList({ initialServices }) {
     const supabase = createClient()
     const { companyId } = useAuth()
 
-    const [services, setServices] = useState([])
-    const [loading, setLoading] = useState(true)
+    const [services, setServices] = useState(initialServices || [])
     const [isEditing, setIsEditing] = useState(false)
     const [currentService, setCurrentService] = useState({ name: '', price: '', description: '' })
-
-    useEffect(() => {
-        fetchServices()
-    }, [])
-
-    const fetchServices = async () => {
-        setLoading(true)
-        const { data } = await supabase.from('services').select('*').order('name')
-        setServices(data || [])
-        setLoading(false)
-    }
 
     const handleEdit = (service) => {
         setCurrentService(service)

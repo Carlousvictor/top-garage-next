@@ -3,13 +3,17 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 
-export default function ProductList() {
-    const supabase = createClient()
-    const { companyId } = useAuth()
+import { useRouter } from 'next/navigation'
 
-    const [products, setProducts] = useState([])
-    const [suppliers, setSuppliers] = useState([])
-    const [loading, setLoading] = useState(true)
+export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
+    const supabase = createClient()
+    const { tenantId } = useAuth()
+    const router = useRouter()
+
+    const [products, setProducts] = useState(initialProducts || [])
+    const [suppliers, setSuppliers] = useState(initialSuppliers || [])
+    const [categories, setCategories] = useState(initialCategories || [])
+    const [brands, setBrands] = useState(initialBrands || [])
     const [searchTerm, setSearchTerm] = useState('')
     const [isEditing, setIsEditing] = useState(false)
     const [currentProduct, setCurrentProduct] = useState({
@@ -18,31 +22,13 @@ export default function ProductList() {
         description: '',
         cost_price: '',
         selling_price: '',
-        profit_margin: '',
+        profit_margin_percent: '',
         quantity: '',
-        supplier_id: ''
+        min_quantity: '',
+        supplier_id: '',
+        category_id: '',
+        brand_id: ''
     })
-
-    useEffect(() => {
-        fetchData()
-    }, [])
-
-    const fetchData = async () => {
-        setLoading(true)
-        const { data: prodData } = await supabase
-            .from('products')
-            .select(`
-                *,
-                suppliers (name)
-            `)
-            .order('name')
-
-        const { data: suppData } = await supabase.from('suppliers').select('*').order('name')
-
-        setProducts(prodData || [])
-        setSuppliers(suppData || [])
-        setLoading(false)
-    }
 
     const handleEdit = (product) => {
         setCurrentProduct({
@@ -60,9 +46,12 @@ export default function ProductList() {
             description: '',
             cost_price: '',
             selling_price: '',
-            profit_margin: '',
+            profit_margin_percent: '',
             quantity: 0,
-            supplier_id: ''
+            min_quantity: 0,
+            supplier_id: '',
+            category_id: '',
+            brand_id: ''
         })
         setIsEditing(true)
     }
@@ -107,7 +96,7 @@ export default function ProductList() {
 
     const handleCostChange = (val) => {
         const newCost = formatInputCurrency(val)
-        const newSelling = calculateSellingPrice(newCost, currentProduct.profit_margin)
+        const newSelling = calculateSellingPrice(newCost, currentProduct.profit_margin_percent)
         setCurrentProduct(prev => ({
             ...prev,
             cost_price: newCost,
@@ -120,7 +109,7 @@ export default function ProductList() {
         const newSelling = calculateSellingPrice(currentProduct.cost_price, newMargin)
         setCurrentProduct(prev => ({
             ...prev,
-            profit_margin: newMargin,
+            profit_margin_percent: newMargin,
             selling_price: newSelling || prev.selling_price
         }))
     }
@@ -129,7 +118,7 @@ export default function ProductList() {
         e.preventDefault()
         setLoading(true)
 
-        if (!companyId) {
+        if (!tenantId) {
             alert('Erro: Empresa não identificada.')
             setLoading(false)
             return
@@ -137,28 +126,32 @@ export default function ProductList() {
 
         try {
             const payload = {
-                company_id: companyId,
+                tenant_id: tenantId,
                 name: currentProduct.name,
                 sku: currentProduct.sku,
                 description: currentProduct.description,
                 cost_price: parseCurrency(currentProduct.cost_price),
                 selling_price: parseCurrency(currentProduct.selling_price),
+                profit_margin_percent: parseFloat(currentProduct.profit_margin_percent || 0),
                 quantity: parseInt(currentProduct.quantity || 0),
-                supplier_id: currentProduct.supplier_id || null
+                min_quantity: parseInt(currentProduct.min_quantity || 0),
+                supplier_id: currentProduct.supplier_id || null,
+                category_id: currentProduct.category_id || null,
+                brand_id: currentProduct.brand_id || null
             }
 
             if (currentProduct.id) {
-                // Remove company_id from update payload to rely on RLS/avoid overwrite if not needed
-                // But for safety and consistency with Insert, we can keep it or remove it. 
-                // Usually better to not change owner.
-                const { company_id, ...updatePayload } = payload
+                const { tenant_id, ...updatePayload } = payload
                 await supabase.from('products').update(updatePayload).eq('id', currentProduct.id)
             } else {
                 await supabase.from('products').insert([payload])
             }
 
             setIsEditing(false)
-            fetchData()
+            // Trigger refresh via Next.js router
+            router.refresh()
+            // To ensure local state updates if router.refresh is too slow, we can reload
+            window.location.reload()
         } catch (error) {
             alert('Erro ao salvar produto: ' + error.message)
         } finally {
@@ -166,11 +159,11 @@ export default function ProductList() {
         }
     }
 
-
     const handleDelete = async (id) => {
         if (!window.confirm('Tem certeza que deseja excluir este produto?')) return
         await supabase.from('products').delete().eq('id', id)
-        fetchData()
+        router.refresh()
+        window.location.reload()
     }
 
     const filteredProducts = products.filter(p =>
@@ -214,9 +207,7 @@ export default function ProductList() {
                             </tr>
                         </thead>
                         <tbody>
-                            {loading ? (
-                                <tr><td colSpan="6" className="text-center py-4">Carregando...</td></tr>
-                            ) : filteredProducts.length === 0 ? (
+                            {filteredProducts.length === 0 ? (
                                 <tr><td colSpan="6" className="text-center py-4">Nenhum produto encontrado.</td></tr>
                             ) : (
                                 filteredProducts.map((product) => (
@@ -268,12 +259,22 @@ export default function ProductList() {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Quantidade em Estoque</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Qtd Atual em Estoque</label>
                             <input
                                 type="number"
                                 required
                                 value={currentProduct.quantity}
                                 onChange={e => setCurrentProduct({ ...currentProduct, quantity: e.target.value })}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Quantidade Mínima</label>
+                            <input
+                                type="number"
+                                required
+                                value={currentProduct.min_quantity}
+                                onChange={e => setCurrentProduct({ ...currentProduct, min_quantity: e.target.value })}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
                         </div>
@@ -293,7 +294,7 @@ export default function ProductList() {
                                 type="number"
                                 step="0.1"
                                 placeholder="Ex: 50"
-                                value={currentProduct.profit_margin}
+                                value={currentProduct.profit_margin_percent}
                                 onChange={e => handleMarginChange(e.target.value)}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
@@ -307,6 +308,32 @@ export default function ProductList() {
                                 onChange={e => setCurrentProduct({ ...currentProduct, selling_price: formatInputCurrency(e.target.value) })}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Categoria</label>
+                            <select
+                                value={currentProduct.category_id || ''}
+                                onChange={e => setCurrentProduct({ ...currentProduct, category_id: e.target.value })}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            >
+                                <option value="">Selecione uma categoria (opcional)</option>
+                                {categories.map(c => (
+                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Marca</label>
+                            <select
+                                value={currentProduct.brand_id || ''}
+                                onChange={e => setCurrentProduct({ ...currentProduct, brand_id: e.target.value })}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            >
+                                <option value="">Selecione uma marca (opcional)</option>
+                                {brands.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-300 mb-1">Fornecedor</label>

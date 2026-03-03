@@ -9,7 +9,8 @@ export const AuthProvider = ({ children }) => {
     const supabase = createClient()
     const router = useRouter()
     const [user, setUser] = useState(null)
-    const [companyId, setCompanyId] = useState(null)
+    const [tenantId, setTenantId] = useState(null)
+    const [tenant, setTenant] = useState(null)
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -18,7 +19,7 @@ export const AuthProvider = ({ children }) => {
 
             if (session?.user) {
                 setUser(session.user)
-                await fetchCompanyId(session.user.id)
+                await fetchTenantData(session.user.id)
             } else {
                 setLoading(false)
             }
@@ -26,10 +27,11 @@ export const AuthProvider = ({ children }) => {
             const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
                 if (session?.user) {
                     setUser(session.user)
-                    await fetchCompanyId(session.user.id)
+                    await fetchTenantData(session.user.id)
                 } else {
                     setUser(null)
-                    setCompanyId(null)
+                    setTenantId(null)
+                    setTenant(null)
                     setLoading(false)
                     router.push('/login')
                 }
@@ -43,19 +45,23 @@ export const AuthProvider = ({ children }) => {
         initializeAuth()
     }, [])
 
-    const fetchCompanyId = async (userId) => {
+    const fetchTenantData = async (userId) => {
         try {
             const { data, error } = await supabase
                 .from('profiles')
-                .select('company_id')
+                .select(`
+                    tenant_id,
+                    tenants (name, logo_url, primary_color)
+                `)
                 .eq('user_id', userId)
                 .single()
 
             if (data) {
-                setCompanyId(data.company_id)
+                setTenantId(data.tenant_id)
+                setTenant(data.tenants)
             }
         } catch (error) {
-            console.error('Error fetching company ID:', error)
+            console.error('Error fetching tenant data:', error)
         } finally {
             setLoading(false)
         }
@@ -67,7 +73,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     return (
-        <AuthContext.Provider value={{ user, companyId, signOut, loading }}>
+        <AuthContext.Provider value={{ user, tenantId, tenant, signOut, loading }}>
             {children}
         </AuthContext.Provider>
     )

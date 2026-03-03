@@ -23,6 +23,7 @@ export default function ServiceOrderForm({ order }) {
     const [model, setModel] = useState(order?.vehicle_model || '')
     const [status, setStatus] = useState(order?.status || 'Aberto')
     const [observation, setObservation] = useState(order?.observation || '')
+    const [isEstimate, setIsEstimate] = useState(order?.is_estimate || false)
     const [items, setItems] = useState([]) // Will fetch later if edit
 
     const [clients, setClients] = useState([])
@@ -58,12 +59,17 @@ export default function ServiceOrderForm({ order }) {
         if (type === 'product' && selectedProduct) {
             const product = products.find(p => p.id === parseInt(selectedProduct))
             if (product) {
+                if (product.quantity <= (product.min_quantity || 0)) {
+                    alert(`Atenção: O estoque de ${product.name} está em ${product.quantity}, atingindo ou abaixo do mínimo (${product.min_quantity || 0}).`)
+                }
                 setItems([...items, {
                     type: 'product',
                     product_id: product.id,
                     description: product.name,
                     quantity: 1,
-                    unit_price: product.selling_price
+                    cost_price: product.cost_price,
+                    profit_margin: product.profit_margin_percent || 0,
+                    unit_price: product.selling_price || 0
                 }])
                 setSelectedProduct('')
             }
@@ -75,7 +81,7 @@ export default function ServiceOrderForm({ order }) {
                     service_id: service.id,
                     description: service.name,
                     quantity: 1,
-                    unit_price: service.price
+                    unit_price: service.price || 0
                 }])
                 setSelectedService('')
             }
@@ -114,6 +120,7 @@ export default function ServiceOrderForm({ order }) {
                 vehicle_model: model,
                 status,
                 observation,
+                is_estimate: isEstimate,
                 total
             }
 
@@ -289,6 +296,19 @@ export default function ServiceOrderForm({ order }) {
                         </div>
                     </div>
 
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            id="isEstimate"
+                            checked={isEstimate}
+                            onChange={(e) => setIsEstimate(e.target.checked)}
+                            className="w-4 h-4 text-red-600 bg-neutral-800 border-neutral-700 rounded focus:ring-red-500"
+                        />
+                        <label htmlFor="isEstimate" className="text-sm font-medium text-gray-300">
+                            Isso é apenas um orçamento (Não dá baixa em estoque / Não gera financeiro)
+                        </label>
+                    </div>
+
                     <hr className="border-neutral-800" />
 
                     {/* Items Selection */}
@@ -361,13 +381,43 @@ export default function ServiceOrderForm({ order }) {
                                                     value={item.quantity}
                                                     onChange={(e) => {
                                                         const newItems = [...items]
-                                                        newItems[idx].quantity = parseFloat(e.target.value)
+                                                        newItems[idx].quantity = parseFloat(e.target.value) || 0
                                                         setItems(newItems)
                                                     }}
-                                                    className="w-16 bg-neutral-800 border border-neutral-700 rounded p-1 text-center"
+                                                    className="w-16 bg-neutral-800 border border-neutral-700 rounded p-1 text-center text-white"
                                                 />
                                             </td>
-                                            <td className="px-4 py-2">R$ {item.unit_price}</td>
+                                            <td className="px-4 py-2">
+                                                {item.type === 'product' && item.cost_price !== undefined && (
+                                                    <div className="flex flex-col gap-1 w-24">
+                                                        <span className="text-xs text-gray-500">M: {item.profit_margin}%</span>
+                                                        <input
+                                                            type="number"
+                                                            value={item.profit_margin}
+                                                            onChange={(e) => {
+                                                                const newItems = [...items]
+                                                                const newMargin = parseFloat(e.target.value) || 0
+                                                                newItems[idx].profit_margin = newMargin
+                                                                newItems[idx].unit_price = (item.cost_price * (1 + newMargin / 100)).toFixed(2)
+                                                                setItems(newItems)
+                                                            }}
+                                                            className="w-full bg-neutral-800 border border-neutral-700 rounded p-1 text-white text-xs"
+                                                            placeholder="Margem %"
+                                                        />
+                                                    </div>
+                                                )}
+                                                <input
+                                                    type="number"
+                                                    value={item.unit_price}
+                                                    onChange={(e) => {
+                                                        const newItems = [...items]
+                                                        newItems[idx].unit_price = parseFloat(e.target.value) || 0
+                                                        setItems(newItems)
+                                                    }}
+                                                    className="w-24 mt-1 bg-neutral-800 border border-neutral-700 rounded p-1 text-white"
+                                                    placeholder="Valor"
+                                                />
+                                            </td>
                                             <td className="px-4 py-2 text-white font-medium">
                                                 R$ {(item.quantity * item.unit_price).toFixed(2)}
                                             </td>
@@ -401,7 +451,16 @@ export default function ServiceOrderForm({ order }) {
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4">
-                        {order && order.status !== 'Concluido' && (
+                        {isEstimate && (
+                            <button
+                                type="button"
+                                onClick={() => setIsEstimate(false)}
+                                className="mr-auto px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-lg shadow-blue-900/20 transition-colors"
+                            >
+                                Converter em OS
+                            </button>
+                        )}
+                        {order && order.status !== 'Concluido' && !isEstimate && (
                             <button
                                 type="button"
                                 onClick={handleFinish}

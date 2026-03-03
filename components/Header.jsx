@@ -1,19 +1,28 @@
 "use client"
 import { usePathname } from 'next/navigation'
 import Image from 'next/image'
+import { useAuth } from '@/context/AuthContext'
 
 export default function Header() {
     const pathname = usePathname()
+    const { tenant, loading } = useAuth()
 
     // Hide header on login page to allow explicit centering there
     if (pathname === '/login') return null
+
+    if (loading) {
+        return <header className="flex-shrink-0 h-32" />
+    }
+
+    const logoSrc = tenant?.logo_url || '/logo.png'
+    const name = tenant?.name || 'Top Garage'
 
     return (
         <header className="flex-shrink-0">
             <div className="relative w-96 h-32">
                 <Image
-                    src="/logo.png"
-                    alt="Top Garage"
+                    src={logoSrc}
+                    alt={name}
                     fill
                     className="object-contain object-left"
                     priority

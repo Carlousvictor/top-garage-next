@@ -17,11 +17,9 @@ export default function LoginPage() {
         setLoading(true)
         setError(null)
 
-        const emailToUse = username.includes('@') ? username : `${username}@topgarage.com`
-
         try {
             const { error } = await supabase.auth.signInWithPassword({
-                email: emailToUse,
+                email: username,
                 password,
             })
 
@@ -44,7 +42,7 @@ export default function LoginPage() {
                     <div className="relative w-64 h-32 mb-4">
                         <Image
                             src="/logo.png"
-                            alt="Top Garage RJ"
+                            alt="Sistema de Gestão"
                             fill
                             className="object-contain"
                             priority

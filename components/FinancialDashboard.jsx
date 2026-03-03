@@ -3,14 +3,16 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 
-export default function FinancialDashboard() {
+export default function FinancialDashboard({ initialTransactions, initialSummary }) {
     const supabase = createClient()
     const { companyId } = useAuth()
 
-    const [activeTab, setActiveTab] = useState('overview') // 'overview', 'payable', 'receivable'
-    const [transactions, setTransactions] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [summary, setSummary] = useState({ income: 0, expense: 0, balance: 0, pendingPayable: 0, pendingReceivable: 0 })
+    const [activeTab, setActiveTab] = useState('overview') // 'overview', 'payable', 'receivable', 'cash_register'
+    const [transactions, setTransactions] = useState(initialTransactions || [])
+    const [loading, setLoading] = useState(false)
+    const [summary, setSummary] = useState(initialSummary || { income: 0, expense: 0, balance: 0, pendingPayable: 0, pendingReceivable: 0 })
+    const [dailySummary, setDailySummary] = useState({ income: 0, expense: 0, balance: 0 })
+    const [isFirstLoad, setIsFirstLoad] = useState(true)
     const [showForm, setShowForm] = useState(false)
     const [newTransaction, setNewTransaction] = useState({
         description: '',
@@ -22,6 +24,10 @@ export default function FinancialDashboard() {
     })
 
     useEffect(() => {
+        if (isFirstLoad && initialTransactions) {
+            setIsFirstLoad(false)
+            return
+        }
         fetchTransactions()
     }, [activeTab])
 
@@ -39,6 +45,9 @@ export default function FinancialDashboard() {
                 query = query.eq('type', 'expense').eq('status', 'pending')
             } else if (activeTab === 'receivable') {
                 query = query.eq('type', 'income').eq('status', 'pending')
+            } else if (activeTab === 'cash_register') {
+                const today = new Date().toISOString().split('T')[0]
+                query = query.eq('status', 'paid').gte('date', today)
             }
 
             const { data, error } = await query
@@ -48,8 +57,9 @@ export default function FinancialDashboard() {
             setTransactions(data || [])
             if (activeTab === 'overview') {
                 calculateSummary(data || [])
+            } else if (activeTab === 'cash_register') {
+                calculateDailySummary(data || [])
             } else {
-                // For payable/receivable, we might want to calculate total pending
                 calculatePendingSummary()
             }
         } catch (error) {
@@ -93,6 +103,22 @@ export default function FinancialDashboard() {
 
         // We still want global pending stats
         calculatePendingSummary()
+    }
+
+    const calculateDailySummary = (data) => {
+        const income = data
+            .filter(t => t.type === 'income')
+            .reduce((acc, t) => acc + Number(t.amount), 0)
+
+        const expense = data
+            .filter(t => t.type === 'expense')
+            .reduce((acc, t) => acc + Number(t.amount), 0)
+
+        setDailySummary({
+            income,
+            expense,
+            balance: income - expense
+        })
     }
 
     const handleCreateTransaction = async (e) => {
@@ -177,6 +203,12 @@ export default function FinancialDashboard() {
                     >
                         Contas a Receber
                     </button>
+                    <button
+                        onClick={() => setActiveTab('cash_register')}
+                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${activeTab === 'cash_register' ? 'bg-red-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        Caixa Diário
+                    </button>
                 </div>
             </div>
 
@@ -201,6 +233,29 @@ export default function FinancialDashboard() {
                     </p>
                 </div>
             </div>
+
+            {/* Daily Summary for Cash Register Tab */}
+            {activeTab === 'cash_register' && (
+                <div className="bg-neutral-900 p-6 rounded-lg border border-neutral-800 shadow-lg text-center">
+                    <h3 className="text-xl font-bold text-white mb-6">Fechamento de Caixa (Hoje)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-black p-4 rounded-lg">
+                            <h4 className="text-gray-400 text-sm mb-1">Entradas (Hoje)</h4>
+                            <p className="text-2xl font-bold text-green-500">R$ {dailySummary.income.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-black p-4 rounded-lg">
+                            <h4 className="text-gray-400 text-sm mb-1">Saídas (Hoje)</h4>
+                            <p className="text-2xl font-bold text-red-500">R$ {dailySummary.expense.toFixed(2)}</p>
+                        </div>
+                        <div className="bg-black p-4 rounded-lg border border-neutral-700">
+                            <h4 className="text-gray-400 text-sm mb-1">Saldo do Dia</h4>
+                            <p className={`text-2xl font-bold ${dailySummary.balance >= 0 ? 'text-blue-500' : 'text-orange-500'}`}>
+                                R$ {dailySummary.balance.toFixed(2)}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Actions for Payable/Receivable */}
             {(activeTab === 'payable' || activeTab === 'receivable') && !showForm && (
@@ -285,11 +340,20 @@ export default function FinancialDashboard() {
 
             {/* List */}
             <div className="bg-neutral-900 rounded-lg border border-neutral-800 shadow-lg overflow-hidden">
-                <div className="p-4 border-b border-neutral-800">
+                <div className="p-4 border-b border-neutral-800 flex justify-between items-center">
                     <h3 className="text-lg font-bold text-white">
                         {activeTab === 'overview' ? 'Transações Recentes (Realizadas)' :
-                            activeTab === 'payable' ? 'Contas a Pagar (Pendentes)' : 'Contas a Receber (Pendentes)'}
+                            activeTab === 'payable' ? 'Contas a Pagar (Pendentes)' :
+                                activeTab === 'cash_register' ? 'Movimentações de Caixa (Hoje)' : 'Contas a Receber (Pendentes)'}
                     </h3>
+                    {activeTab === 'cash_register' && transactions.length > 0 && (
+                        <button
+                            onClick={() => window.print()}
+                            className="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-1 rounded text-sm print:hidden"
+                        >
+                            Imprimir Fechamento
+                        </button>
+                    )}
                 </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left text-gray-400">
