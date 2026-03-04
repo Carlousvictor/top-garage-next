@@ -18,7 +18,7 @@ export default function Header() {
     const name = tenant?.name || 'Top Garage'
 
     return (
-        <header className="flex-shrink-0 flex items-center h-16 w-48 shrink-0">
+        <header className="flex-shrink-0 flex items-center h-20 w-64 shrink-0 p-2 md:pl-4">
             <div className="relative w-full h-full">
                 <Image
                     src={logoSrc}
