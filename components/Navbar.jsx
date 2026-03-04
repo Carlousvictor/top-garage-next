@@ -29,7 +29,7 @@ export default function Navbar() {
     ]
 
     return (
-        <nav className="w-full xl:w-auto flex-grow flex justify-start overflow-x-auto gap-2 bg-neutral-900 rounded-lg border border-red-900/30 items-center px-4 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
+        <nav className="w-full xl:w-auto flex justify-start overflow-x-auto gap-1 bg-neutral-900 rounded-lg border border-red-900/30 items-center px-3 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
             {navItems.map((item) => (
                 <a
                     key={item.path}
@@ -44,7 +44,7 @@ export default function Navbar() {
             ))}
             <button
                 onClick={signOut}
-                className="px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 flex-shrink-0 xl:ml-auto"
+                className="px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 flex-shrink-0"
             >
                 Sair
             </button>
