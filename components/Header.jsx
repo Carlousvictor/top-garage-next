@@ -11,7 +11,7 @@ export default function Header() {
     if (pathname === '/login') return null
 
     if (loading) {
-        return <header className="flex-shrink-0 h-16 w-48" />
+        return <header className="flex-shrink-0 flex items-center h-20 w-64 shrink-0" />
     }
 
     const logoSrc = tenant?.logo_url || '/logo.png'
