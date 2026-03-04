@@ -1,6 +1,7 @@
 "use client"
 
 import { usePathname } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '../context/AuthContext'
 
 export default function Navbar() {
@@ -31,7 +32,7 @@ export default function Navbar() {
     return (
         <nav className="w-full xl:w-auto flex justify-start overflow-x-auto gap-1 bg-neutral-900 rounded-lg border border-red-900/30 items-center px-3 py-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:'none'] [scrollbar-width:'none']">
             {navItems.map((item) => (
-                <a
+                <Link
                     key={item.path}
                     href={item.path}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${isActive(item.path)
@@ -40,7 +41,7 @@ export default function Navbar() {
                         }`}
                 >
                     {item.name}
-                </a>
+                </Link>
             ))}
             <button
                 onClick={signOut}
