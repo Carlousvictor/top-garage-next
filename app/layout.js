@@ -15,7 +15,7 @@ export default function RootLayout({ children }) {
       <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center p-4 md:p-6 antialiased">
         <AuthProvider>
 
-          <div className="w-full max-w-screen-2xl flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+          <div className="w-full max-w-screen-2xl flex flex-col md:flex-row items-center justify-start gap-8 mb-6">
             <Header />
             <Navbar />
           </div>
