@@ -11,19 +11,29 @@ export default function ClientList({ initialClients }) {
     const [isEditing, setIsEditing] = useState(false)
     const [currentClient, setCurrentClient] = useState({ name: '', email: '', phone: '', document: '' })
     const [loading, setLoading] = useState(false)
+    const [vehicles, setVehicles] = useState([])
+    const [newVehicle, setNewVehicle] = useState({ plate: '', brand: '', model: '', year: '', color: '' })
 
     const fetchClients = async () => {
         const { data } = await supabase.from('clients').select('*').order('name')
         setClients(data || [])
     }
 
+    const fetchVehicles = async (clientId) => {
+        const { data } = await supabase.from('vehicles').select('*').eq('client_id', clientId).order('created_at')
+        setVehicles(data || [])
+    }
+
     const handleEdit = (client) => {
         setCurrentClient(client)
+        fetchVehicles(client.id)
         setIsEditing(true)
     }
 
     const handleNew = () => {
         setCurrentClient({ name: '', email: '', phone: '', document: '' })
+        setVehicles([])
+        setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
         setIsEditing(true)
     }
 
@@ -66,6 +76,43 @@ export default function ClientList({ initialClients }) {
         if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return
         await supabase.from('clients').delete().eq('id', id)
         fetchClients()
+    }
+
+    const handleAddVehicle = async () => {
+        if (!newVehicle.plate) {
+            alert('A placa do veículo é obrigatória.')
+            return
+        }
+        if (!currentClient.id) {
+            alert('Por favor, salve os dados pessoais do cliente primeiro antes de adicionar um veículo.')
+            return
+        }
+
+        setLoading(true)
+        try {
+            const payload = {
+                tenant_id: tenantId,
+                client_id: currentClient.id,
+                plate: newVehicle.plate.toUpperCase(),
+                brand: newVehicle.brand,
+                model: newVehicle.model,
+                year: newVehicle.year,
+                color: newVehicle.color
+            }
+            await supabase.from('vehicles').insert([payload])
+            setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
+            fetchVehicles(currentClient.id)
+        } catch (error) {
+            alert('Erro ao adicionar veículo: ' + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    const handleDeleteVehicle = async (id) => {
+        if (!window.confirm('Tem certeza que deseja excluir este veículo?')) return
+        await supabase.from('vehicles').delete().eq('id', id)
+        fetchVehicles(currentClient.id)
     }
 
     return (
@@ -157,6 +204,80 @@ export default function ClientList({ initialClients }) {
                             />
                         </div>
                     </div>
+
+                    {currentClient.id && (
+                        <div className="mt-8 pt-6 border-t border-neutral-800">
+                            <h4 className="text-md font-bold text-gray-200 mb-4">Veículos do Cliente</h4>
+
+                            {/* Lista de Veículos Existentes */}
+                            {vehicles.length > 0 ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                    {vehicles.map(v => (
+                                        <div key={v.id} className="bg-neutral-900 border border-neutral-700 p-4 rounded-lg flex justify-between items-center">
+                                            <div>
+                                                <div className="font-bold text-white text-lg">{v.plate}</div>
+                                                <div className="text-sm text-gray-400">{v.brand} {v.model} {v.year ? `(${v.year})` : ''}</div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleDeleteVehicle(v.id)}
+                                                className="text-red-500 hover:text-red-400 p-2"
+                                            >
+                                                Excluir
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-sm text-gray-500 mb-6">Nenhum veículo cadastrado para este cliente.</p>
+                            )}
+
+                            {/* Form de Novo Veículo */}
+                            <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800">
+                                <h5 className="text-sm font-medium text-gray-300 mb-3">Adicionar Novo Veículo</h5>
+                                <div className="flex flex-wrap gap-2 items-end">
+                                    <div className="flex-1 min-w-[120px]">
+                                        <label className="text-xs text-gray-400">Placa *</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.plate}
+                                            onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
+                                            placeholder="ABC-1234"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[120px]">
+                                        <label className="text-xs text-gray-400">Marca</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.brand}
+                                            onChange={e => setNewVehicle({ ...newVehicle, brand: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
+                                            placeholder="Ex: Fiat"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[120px]">
+                                        <label className="text-xs text-gray-400">Modelo</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.model}
+                                            onChange={e => setNewVehicle({ ...newVehicle, model: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
+                                            placeholder="Ex: Argo"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={handleAddVehicle}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium mb-[2px]"
+                                    >
+                                        + Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex gap-4 pt-6">
                         <button
                             type="submit"

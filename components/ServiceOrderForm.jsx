@@ -24,9 +24,11 @@ export default function ServiceOrderForm({ order }) {
     const [status, setStatus] = useState(order?.status || 'Aberto')
     const [observation, setObservation] = useState(order?.observation || '')
     const [isEstimate, setIsEstimate] = useState(order?.is_estimate || false)
+    const [nextRevisionDate, setNextRevisionDate] = useState(order?.next_revision_date ? order.next_revision_date.split('T')[0] : '')
     const [items, setItems] = useState([]) // Will fetch later if edit
 
     const [clients, setClients] = useState([])
+    const [clientVehicles, setClientVehicles] = useState([])
     const [products, setProducts] = useState([])
     const [services, setServices] = useState([])
 
@@ -55,7 +57,20 @@ export default function ServiceOrderForm({ order }) {
         fetchData()
     }, [order?.id])
 
+    useEffect(() => {
+        const fetchVehicles = async () => {
+            if (clientId) {
+                const { data } = await supabase.from('vehicles').select('*').eq('client_id', clientId).order('created_at')
+                setClientVehicles(data || [])
+            } else {
+                setClientVehicles([])
+            }
+        }
+        fetchVehicles()
+    }, [clientId])
+
     const handleAddItem = (type) => {
+        // ... preserving other functions until the render
         if (type === 'product' && selectedProduct) {
             const product = products.find(p => p.id === parseInt(selectedProduct))
             if (product) {
@@ -113,7 +128,7 @@ export default function ServiceOrderForm({ order }) {
 
             // 1. Upsert Order
             const orderData = {
-                company_id: companyId,
+                tenant_id: companyId,
                 client_id: clientId || null,
                 vehicle_plate: plate,
                 vehicle_brand: brand,
@@ -121,13 +136,13 @@ export default function ServiceOrderForm({ order }) {
                 status,
                 observation,
                 is_estimate: isEstimate,
+                next_revision_date: nextRevisionDate || null,
                 total
             }
 
             let orderId = order?.id
 
             if (orderId) {
-                // Ensure we don't overwrite company_id just in case, or do ensures it stays same
                 await supabase.from('service_orders').update(orderData).eq('id', orderId)
             } else {
                 const { data, error } = await supabase.from('service_orders').insert([orderData]).select().single()
@@ -135,17 +150,14 @@ export default function ServiceOrderForm({ order }) {
                 orderId = data.id
             }
 
-            // 2. Handle Items (Delete all and recreate for simplicity in this MVP)
             if (orderId) {
-                // Delete existing items if any (only on edit)
                 if (order?.id) {
                     await supabase.from('service_order_items').delete().eq('service_order_id', orderId)
                 }
 
-                // Insert new items
                 if (items.length > 0) {
                     const itemsToInsert = items.map(item => ({
-                        company_id: companyId,
+                        tenant_id: companyId,
                         service_order_id: orderId,
                         product_id: item.product_id || null,
                         service_id: item.service_id || null,
@@ -182,7 +194,6 @@ export default function ServiceOrderForm({ order }) {
         try {
             const total = calculateTotal()
 
-            // 1. Update OS Status
             const { error: osError } = await supabase
                 .from('service_orders')
                 .update({ status: 'Concluido', total })
@@ -190,10 +201,8 @@ export default function ServiceOrderForm({ order }) {
 
             if (osError) throw osError
 
-            // 2. Deduct Stock
             for (const item of items) {
                 if (item.type === 'product' && item.product_id) {
-                    // Fetch current quantity
                     const { data: prod } = await supabase
                         .from('products')
                         .select('quantity')
@@ -209,9 +218,8 @@ export default function ServiceOrderForm({ order }) {
                 }
             }
 
-            // 3. Register Income
             await supabase.from('transactions').insert([{
-                company_id: companyId,
+                tenant_id: companyId,
                 description: `Receita OS #${order.id} - Placa ${plate}`,
                 type: 'income',
                 category: 'Service',
@@ -246,7 +254,7 @@ export default function ServiceOrderForm({ order }) {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Vehicle & Client Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
+                        <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-300 mb-1">Cliente</label>
                             <select
                                 value={clientId}
@@ -258,8 +266,30 @@ export default function ServiceOrderForm({ order }) {
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
                             </select>
-                            {/* TODO: Add Quick Client Create Button */}
                         </div>
+
+                        {clientVehicles.length > 0 && (
+                            <div className="md:col-span-2 bg-neutral-950 p-3 rounded border border-blue-900/30">
+                                <label className="block text-xs font-medium text-blue-400 mb-2">Autopreenchimento: Selecione um veículo do cliente</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {clientVehicles.map(v => (
+                                        <button
+                                            key={v.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setPlate(v.plate)
+                                                setBrand(v.brand || '')
+                                                setModel(v.model || '')
+                                            }}
+                                            className="bg-neutral-800 hover:bg-neutral-700 text-gray-200 px-3 py-1.5 rounded text-sm border border-neutral-700 transition"
+                                        >
+                                            {v.plate} - {v.brand} {v.model}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Placa *</label>
                             <input
@@ -295,6 +325,22 @@ export default function ServiceOrderForm({ order }) {
                             </select>
                         </div>
                     </div>
+
+                    {status === 'Concluido' && (
+                        <div className="bg-neutral-950 p-4 border border-blue-900/40 rounded-lg shadow-sm">
+                            <h3 className="text-sm font-bold text-blue-400 mb-2">Pós-Venda / CRM</h3>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Data da Próxima Revisão (Para acionamento no WhatsApp)</label>
+                                <input
+                                    type="date"
+                                    value={nextRevisionDate}
+                                    onChange={(e) => setNextRevisionDate(e.target.value)}
+                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-1/2 p-2.5"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Ao definir uma data aqui, ela será usada como a data oficial para o alerta do CRM em vez do cálculo automático de tempo.</p>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="flex items-center gap-2">
                         <input

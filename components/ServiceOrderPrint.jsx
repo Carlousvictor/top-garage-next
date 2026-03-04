@@ -20,6 +20,43 @@ export default function ServiceOrderPrint({ order, items, client }) {
     const totalProducts = products.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
     const totalServices = services.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
 
+    // Calculate next revision date based on CRM logic or use manual date
+    const calculateNextRevisionDate = () => {
+        if (order.next_revision_date) {
+            return new Date(`${order.next_revision_date}T12:00:00`);
+        }
+
+        let hasOil = false;
+        let hasBrakePad = false;
+
+        items.forEach(item => {
+            const desc = item.description.toLowerCase();
+            if (desc.includes('óleo') || desc.includes('oleo')) hasOil = true;
+            if (desc.includes('pastilha') || desc.includes('freio')) hasBrakePad = true;
+        });
+
+        const orderDate = order.created_at ? new Date(order.created_at) : new Date();
+        const baseDate = new Date(orderDate);
+        baseDate.setMonth(baseDate.getMonth() + 6); // Default is 6 months
+
+        return baseDate;
+    };
+
+    const getNextRevisionType = () => {
+        if (order.next_revision_date) return 'Revisão Agendada Manualmente';
+
+        let type = 'Revisão Semestral';
+        items.forEach(item => {
+            const desc = item.description.toLowerCase();
+            if (desc.includes('óleo') || desc.includes('oleo')) type = 'Troca de Óleo / Revisão Geral';
+            else if (desc.includes('pastilha') || desc.includes('freio')) type = 'Revisão Sistema de Freios / Pastilhas';
+        });
+        return type;
+    };
+
+    const nextRevisionDate = calculateNextRevisionDate();
+    const nextRevisionType = getNextRevisionType();
+
     return (
         <div className="hidden print:flex flex-col font-sans text-black bg-white p-8 w-full h-full fixed top-0 left-0 z-[9999] print:m-0">
 
@@ -129,6 +166,15 @@ export default function ServiceOrderPrint({ order, items, client }) {
                         <p className="whitespace-pre-wrap">{order.observation}</p>
                     </div>
                 )}
+
+                {/* Next Revision Highlight */}
+                <div className="mb-4 border-2 border-dashed border-red-600 bg-red-50 p-3 text-center rounded">
+                    <h3 className="text-red-800 font-bold uppercase text-sm mb-1">Próxima Revisão Programada</h3>
+                    <p className="text-red-900 font-medium font-bold text-lg">
+                        {formatDate(nextRevisionDate).split(' ')[0]} {/* Apenas a data */}
+                    </p>
+                    <p className="text-red-700 text-xs mt-1 uppercase font-bold">{nextRevisionType}</p>
+                </div>
             </div>
 
             {/* Footer / Signatures - 4 Columns as specificed */}
