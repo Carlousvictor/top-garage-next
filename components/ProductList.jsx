@@ -431,34 +431,35 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                                 rows="3"
                             />
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Vínculos (Produtos Equivalentes)</label>
-                                <Select
-                                    isMulti
-                                    options={productOptions}
-                                    value={currentProduct.linked_products || []}
-                                    onChange={selected => setCurrentProduct({ ...currentProduct, linked_products: selected })}
-                                    placeholder="Buscar e vincular produtos (ex: Kit Troca de Óleo)"
-                                    styles={customStyles}
-                                    noOptionsMessage={() => "Nenhum produto encontrado"}
-                                />
-                            </div>
                         </div>
-                        <div className="flex gap-4 pt-6">
-                            <button
-                                type="submit"
-                                className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium"
-                            >
-                                Salvar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setIsEditing(false)}
-                                className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
-                            >
-                                Cancelar
-                            </button>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Vínculos (Produtos Equivalentes)</label>
+                            <Select
+                                isMulti
+                                options={productOptions}
+                                value={currentProduct.linked_products || []}
+                                onChange={selected => setCurrentProduct({ ...currentProduct, linked_products: selected })}
+                                placeholder="Buscar e vincular produtos (ex: Kit Troca de Óleo)"
+                                styles={customStyles}
+                                noOptionsMessage={() => "Nenhum produto encontrado"}
+                            />
                         </div>
+                    </div>
+                    <div className="flex gap-4 pt-6">
+                        <button
+                            type="submit"
+                            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium"
+                        >
+                            Salvar
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsEditing(false)}
+                            className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
+                        >
+                            Cancelar
+                        </button>
+                    </div>
                 </form>
             )}
         </div>
