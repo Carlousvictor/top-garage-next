@@ -1,8 +1,8 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'import Select from 'react-select'
-
+import { useAuth } from '../context/AuthContext'
+import Select from 'react-select'
 import { useRouter } from 'next/navigation'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
