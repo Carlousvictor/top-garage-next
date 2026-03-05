@@ -1,7 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext'import Select from 'react-select'
 
 import { useRouter } from 'next/navigation'
 
@@ -27,14 +27,25 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         min_quantity: '',
         supplier_id: '',
         category_id: '',
-        brand_id: ''
+        brand_id: '',
+        linked_products: []
     })
 
     const handleEdit = (product) => {
+        // Prepare linked_products for react-select format [{value, label}]
+        let formattedLinks = []
+        if (product.linked_products && Array.isArray(product.linked_products)) {
+            formattedLinks = product.linked_products.map(id => {
+                const linkedProd = products.find(p => p.id === id)
+                return linkedProd ? { value: id, label: linkedProd.name } : null
+            }).filter(Boolean)
+        }
+
         setCurrentProduct({
             ...product,
             cost_price: formatCurrency(product.cost_price),
-            selling_price: formatCurrency(product.selling_price)
+            selling_price: formatCurrency(product.selling_price),
+            linked_products: formattedLinks
         })
         setIsEditing(true)
     }
@@ -51,7 +62,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             min_quantity: 0,
             supplier_id: '',
             category_id: '',
-            brand_id: ''
+            brand_id: '',
+            linked_products: []
         })
         setIsEditing(true)
     }
@@ -137,7 +149,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 min_quantity: parseInt(currentProduct.min_quantity || 0),
                 supplier_id: currentProduct.supplier_id || null,
                 category_id: currentProduct.category_id || null,
-                brand_id: currentProduct.brand_id || null
+                brand_id: currentProduct.brand_id || null,
+                linked_products: currentProduct.linked_products ? currentProduct.linked_products.map(opt => opt.value) : []
             }
 
             if (currentProduct.id) {
@@ -170,6 +183,68 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
     )
+
+    // Options for linked products (excluding the current product being edited)
+    const productOptions = products
+        .filter(p => p.id !== currentProduct.id)
+        .map(p => ({ value: p.id, label: p.name }))
+
+    // Custom dark theme styles for react-select
+    const customStyles = {
+        control: (base, state) => ({
+            ...base,
+            backgroundColor: '#262626', // bg-neutral-800
+            borderColor: state.isFocused ? '#ef4444' : '#404040',
+            color: '#ffffff',
+            minHeight: '42px',
+            boxShadow: 'none',
+            '&:hover': {
+                borderColor: '#ef4444'
+            }
+        }),
+        menu: (base) => ({
+            ...base,
+            backgroundColor: '#171717',
+            border: '1px solid #404040',
+        }),
+        option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isFocused ? '#262626' : 'transparent',
+            color: '#ffffff',
+            cursor: 'pointer',
+            '&:active': {
+                backgroundColor: '#ef4444'
+            }
+        }),
+        singleValue: (base) => ({
+            ...base,
+            color: '#ffffff',
+        }),
+        multiValue: (base) => ({
+            ...base,
+            backgroundColor: '#404040',
+        }),
+        multiValueLabel: (base) => ({
+            ...base,
+            color: '#ffffff',
+        }),
+        multiValueRemove: (base) => ({
+            ...base,
+            color: '#ffffff',
+            ':hover': {
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+            },
+        }),
+        input: (base) => ({
+            ...base,
+            color: '#ffffff',
+        }),
+        placeholder: (base) => ({
+            ...base,
+            color: '#9ca3af',
+        }),
+    }
 
     return (
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
@@ -356,23 +431,34 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                                 rows="3"
                             />
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Vínculos (Produtos Equivalentes)</label>
+                                <Select
+                                    isMulti
+                                    options={productOptions}
+                                    value={currentProduct.linked_products || []}
+                                    onChange={selected => setCurrentProduct({ ...currentProduct, linked_products: selected })}
+                                    placeholder="Buscar e vincular produtos (ex: Kit Troca de Óleo)"
+                                    styles={customStyles}
+                                    noOptionsMessage={() => "Nenhum produto encontrado"}
+                                />
+                            </div>
                         </div>
-                    </div>
-                    <div className="flex gap-4 pt-6">
-                        <button
-                            type="submit"
-                            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium"
-                        >
-                            Salvar
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setIsEditing(false)}
-                            className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
-                        >
-                            Cancelar
-                        </button>
-                    </div>
+                        <div className="flex gap-4 pt-6">
+                            <button
+                                type="submit"
+                                className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium"
+                            >
+                                Salvar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setIsEditing(false)}
+                                className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
+                            >
+                                Cancelar
+                            </button>
+                        </div>
                 </form>
             )}
         </div>
