@@ -1,6 +1,7 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
+import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { useAuth } from '../context/AuthContext'
 
 export default function ClientList({ initialClients }) {
@@ -113,6 +114,25 @@ export default function ClientList({ initialClients }) {
         if (!window.confirm('Tem certeza que deseja excluir este veículo?')) return
         await supabase.from('vehicles').delete().eq('id', id)
         fetchVehicles(currentClient.id)
+    }
+
+    const handleSearchVehicle = async () => {
+        if (!newVehicle.plate) return
+        setLoading(true)
+        try {
+            const data = await fetchVehicleByPlate(newVehicle.plate)
+            setNewVehicle((prev) => ({
+                ...prev,
+                brand: data.marca || '',
+                model: data.modelo || '',
+                year: data.ano?.toString() || '',
+                color: data.cor || ''
+            }))
+        } catch (error) {
+            alert('Erro ao buscar veículo: ' + error.message)
+        } finally {
+            setLoading(false)
+        }
     }
 
     return (
@@ -235,43 +255,75 @@ export default function ClientList({ initialClients }) {
                             {/* Form de Novo Veículo */}
                             <div className="bg-neutral-900 p-4 rounded-lg border border-neutral-800">
                                 <h5 className="text-sm font-medium text-gray-300 mb-3">Adicionar Novo Veículo</h5>
-                                <div className="flex flex-wrap gap-2 items-end">
-                                    <div className="flex-1 min-w-[120px]">
-                                        <label className="text-xs text-gray-400">Placa *</label>
-                                        <input
-                                            type="text"
-                                            value={newVehicle.plate}
-                                            onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value })}
-                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
-                                            placeholder="ABC-1234"
-                                        />
+                                <div className="flex flex-wrap gap-3 items-end">
+                                    <div className="flex-1 min-w-[200px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Placa *</label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={newVehicle.plate}
+                                                onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value.toUpperCase() })}
+                                                className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                                placeholder="ABC-1234"
+                                                maxLength={8}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={handleSearchVehicle}
+                                                disabled={loading || !newVehicle.plate}
+                                                className="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-lg text-sm transition-colors disabled:opacity-50"
+                                            >
+                                                {loading ? '...' : 'Buscar'}
+                                            </button>
+                                        </div>
                                     </div>
                                     <div className="flex-1 min-w-[120px]">
-                                        <label className="text-xs text-gray-400">Marca</label>
+                                        <label className="text-xs text-gray-400 block mb-1">Marca</label>
                                         <input
                                             type="text"
                                             value={newVehicle.brand}
                                             onChange={e => setNewVehicle({ ...newVehicle, brand: e.target.value })}
-                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
                                             placeholder="Ex: Fiat"
                                         />
                                     </div>
                                     <div className="flex-1 min-w-[120px]">
-                                        <label className="text-xs text-gray-400">Modelo</label>
+                                        <label className="text-xs text-gray-400 block mb-1">Modelo</label>
                                         <input
                                             type="text"
                                             value={newVehicle.model}
                                             onChange={e => setNewVehicle({ ...newVehicle, model: e.target.value })}
-                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 mt-1"
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
                                             placeholder="Ex: Argo"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[80px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Ano</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.year}
+                                            onChange={e => setNewVehicle({ ...newVehicle, year: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="2021"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[100px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Cor</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.color}
+                                            onChange={e => setNewVehicle({ ...newVehicle, color: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="Preto"
                                         />
                                     </div>
                                     <button
                                         type="button"
                                         onClick={handleAddVehicle}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium mb-[2px]"
+                                        disabled={loading}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold transition-colors w-full md:w-auto"
                                     >
-                                        + Add
+                                        + Adicionar Veículo
                                     </button>
                                 </div>
                             </div>

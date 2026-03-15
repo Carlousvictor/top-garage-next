@@ -22,7 +22,6 @@ export default function Navbar() {
         { name: 'PDV (Balcão)', path: '/pdv' },
         { name: 'CRM (Pós-Venda)', path: '/crm' },
         { name: 'Clientes', path: '/clients' },
-        { name: 'Cadastro de Veículo', path: '/vehicles' },
         { name: 'Estoque', path: '/stock' },
         { name: 'Serviços', path: '/services' },
         { name: 'Importação XML', path: '/import' },
