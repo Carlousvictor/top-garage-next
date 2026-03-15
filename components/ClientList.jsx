@@ -61,7 +61,21 @@ export default function ClientList({ initialClients }) {
                 const { tenant_id, ...updatePayload } = payload
                 await supabase.from('clients').update(updatePayload).eq('id', currentClient.id)
             } else {
-                await supabase.from('clients').insert([payload])
+                const { data, error } = await supabase.from('clients').insert([payload]).select().single()
+                if (error) throw error
+
+                if (vehicles.length > 0) {
+                    const vehiclesPayload = vehicles.map(v => ({
+                        tenant_id: tenantId,
+                        client_id: data.id,
+                        plate: v.plate,
+                        brand: v.brand,
+                        model: v.model,
+                        year: v.year,
+                        color: v.color
+                    }))
+                    await supabase.from('vehicles').insert(vehiclesPayload)
+                }
             }
 
             setIsEditing(false)
@@ -84,36 +98,46 @@ export default function ClientList({ initialClients }) {
             alert('A placa do veículo é obrigatória.')
             return
         }
-        if (!currentClient.id) {
-            alert('Por favor, salve os dados pessoais do cliente primeiro antes de adicionar um veículo.')
-            return
-        }
 
-        setLoading(true)
-        try {
-            const payload = {
-                tenant_id: tenantId,
-                client_id: currentClient.id,
-                plate: newVehicle.plate.toUpperCase(),
-                brand: newVehicle.brand,
-                model: newVehicle.model,
-                year: newVehicle.year,
-                color: newVehicle.color
+        if (currentClient.id) {
+            setLoading(true)
+            try {
+                const payload = {
+                    tenant_id: tenantId,
+                    client_id: currentClient.id,
+                    plate: newVehicle.plate.toUpperCase(),
+                    brand: newVehicle.brand,
+                    model: newVehicle.model,
+                    year: newVehicle.year,
+                    color: newVehicle.color
+                }
+                await supabase.from('vehicles').insert([payload])
+                setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
+                fetchVehicles(currentClient.id)
+            } catch (error) {
+                alert('Erro ao adicionar veículo: ' + error.message)
+            } finally {
+                setLoading(false)
             }
-            await supabase.from('vehicles').insert([payload])
+        } else {
+            setVehicles([...vehicles, {
+                id: Date.now(), // ID temporário
+                ...newVehicle,
+                plate: newVehicle.plate.toUpperCase()
+            }])
             setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
-            fetchVehicles(currentClient.id)
-        } catch (error) {
-            alert('Erro ao adicionar veículo: ' + error.message)
-        } finally {
-            setLoading(false)
         }
     }
 
     const handleDeleteVehicle = async (id) => {
         if (!window.confirm('Tem certeza que deseja excluir este veículo?')) return
-        await supabase.from('vehicles').delete().eq('id', id)
-        fetchVehicles(currentClient.id)
+        
+        if (currentClient.id) {
+            await supabase.from('vehicles').delete().eq('id', id)
+            fetchVehicles(currentClient.id)
+        } else {
+            setVehicles(vehicles.filter(v => v.id !== id))
+        }
     }
 
     const handleSearchVehicle = async () => {
@@ -225,9 +249,8 @@ export default function ClientList({ initialClients }) {
                         </div>
                     </div>
 
-                    {currentClient.id && (
-                        <div className="mt-8 pt-6 border-t border-neutral-800">
-                            <h4 className="text-md font-bold text-gray-200 mb-4">Veículos do Cliente</h4>
+                    <div className="mt-8 pt-6 border-t border-neutral-800">
+                        <h4 className="text-md font-bold text-gray-200 mb-4">Veículos do Cliente</h4>
 
                             {/* Lista de Veículos Existentes */}
                             {vehicles.length > 0 ? (
@@ -328,7 +351,6 @@ export default function ClientList({ initialClients }) {
                                 </div>
                             </div>
                         </div>
-                    )}
 
                     <div className="flex gap-4 pt-6">
                         <button
