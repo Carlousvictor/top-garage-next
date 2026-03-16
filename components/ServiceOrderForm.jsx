@@ -25,6 +25,7 @@ export default function ServiceOrderForm({ order }) {
     const [observation, setObservation] = useState(order?.observation || '')
     const [isEstimate, setIsEstimate] = useState(order?.is_estimate || false)
     const [nextRevisionDate, setNextRevisionDate] = useState(order?.next_revision_date ? order.next_revision_date.split('T')[0] : '')
+    const [paymentMethod, setPaymentMethod] = useState('Dinheiro') // New state
     const [items, setItems] = useState([]) // Will fetch later if edit
 
     const [clients, setClients] = useState([])
@@ -224,7 +225,10 @@ export default function ServiceOrderForm({ order }) {
                 type: 'income',
                 category: 'Service',
                 amount: total,
-                related_os_id: order.id
+                related_os_id: order.id,
+                status: 'paid',
+                payment_method: paymentMethod,
+                date: new Date().toISOString()
             }])
 
             alert('OS Finalizada com sucesso!')
@@ -507,14 +511,26 @@ export default function ServiceOrderForm({ order }) {
                             </button>
                         )}
                         {order && order.status !== 'Concluido' && !isEstimate && (
-                            <button
-                                type="button"
-                                onClick={handleFinish}
-                                disabled={loading}
-                                className="mr-auto px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-lg shadow-green-900/20 transition-colors"
-                            >
-                                Finalizar OS (Receber)
-                            </button>
+                            <div className="flex gap-2 items-center mr-auto">
+                                <select
+                                    value={paymentMethod}
+                                    onChange={(e) => setPaymentMethod(e.target.value)}
+                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block p-2.5 h-full"
+                                >
+                                    <option value="Dinheiro">Dinheiro</option>
+                                    <option value="PIX">PIX</option>
+                                    <option value="Cartão de Crédito">Cartão de Crédito</option>
+                                    <option value="Cartão de Débito">Cartão de Débito</option>
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={handleFinish}
+                                    disabled={loading}
+                                    className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-lg shadow-green-900/20 transition-colors whitespace-nowrap"
+                                >
+                                    Finalizar OS (Receber)
+                                </button>
+                            </div>
                         )}
                         <button
                             type="button"

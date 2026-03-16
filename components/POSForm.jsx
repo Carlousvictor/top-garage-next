@@ -99,7 +99,8 @@ export default function POSForm() {
                 category: 'Venda de Peças',
                 amount: total,
                 status: 'paid', // Instant pay
-                date: new Date().toISOString()
+                date: new Date().toISOString(),
+                payment_method: paymentMethod
             }])
 
             if (txError) throw txError

@@ -26,6 +26,7 @@ export default function Navbar() {
         { name: 'Serviços', path: '/services' },
         { name: 'Importação XML', path: '/import' },
         { name: 'Financeiro', path: '/financial' },
+        { name: 'Movimento Diário', path: '/financial/daily' },
     ]
 
     return (
