@@ -8,15 +8,18 @@ export default function Navbar() {
     const pathname = usePathname()
     const { signOut } = useAuth()
 
-    if (pathname === '/login' || pathname === '/signup') return null
+    if (pathname === '/login' || pathname === '/signup' || pathname === '/') return null
 
     const isActive = (path) => {
         if (path === '/' && pathname === '/') return true
+        // Prevent generic '/financial' from lighting up when we are inside '/financial/daily'
+        if (path === '/financial' && pathname !== '/financial') return false
         if (path !== '/' && pathname.startsWith(path)) return true
         return false
     }
 
     const navItems = [
+        { name: 'Início', path: '/' },
         { name: 'Ordens de Serviço', path: '/os' },
         { name: 'OS Terceiros', path: '/thirds' },
         { name: 'PDV (Balcão)', path: '/pdv' },

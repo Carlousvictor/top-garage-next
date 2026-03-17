@@ -19,6 +19,22 @@ export default function DailyMovement() {
     const [expenseAmount, setExpenseAmount] = useState('')
     const [expenseSubmitting, setExpenseSubmitting] = useState(false)
 
+    // Helper to format input value as user types (money mask)
+    const formatInputCurrency = (value) => {
+        if (!value) return ''
+        const numericValue = value.toString().replace(/\D/g, '')
+        const floatValue = parseFloat(numericValue) / 100
+        return floatValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    }
+
+    // Helper to parse currency string back to float
+    const parseCurrency = (value) => {
+        if (!value) return 0
+        if (typeof value === 'number') return value
+        const numericValue = value.toString().replace(/\D/g, '')
+        return parseFloat(numericValue) / 100
+    }
+
     const fetchTodayTransactions = async () => {
         if (!companyId) return
         setLoading(true)
@@ -53,7 +69,7 @@ export default function DailyMovement() {
         if (!expenseDesc || !expenseAmount) return
         
         setExpenseSubmitting(true)
-        const amountNum = parseFloat(expenseAmount.replace(',', '.'))
+        const amountNum = parseCurrency(expenseAmount)
 
         const { error } = await supabase.from('transactions').insert([{
             tenant_id: companyId,
@@ -135,7 +151,7 @@ export default function DailyMovement() {
                         <h3 className="text-gray-400 font-medium">Entradas (Receitas)</h3>
                     </div>
                     <p className="text-3xl font-black text-green-400">
-                        R$ {totalIncome.toFixed(2)}
+                        {totalIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                 </div>
 
@@ -150,7 +166,7 @@ export default function DailyMovement() {
                         <h3 className="text-gray-400 font-medium">Saídas (Despesas)</h3>
                     </div>
                     <p className="text-3xl font-black text-red-400">
-                        R$ {totalExpense.toFixed(2)}
+                        {totalExpense.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                 </div>
 
@@ -165,7 +181,7 @@ export default function DailyMovement() {
                         <h3 className="text-blue-200 font-medium">Saldo do Dia em Caixa</h3>
                     </div>
                     <p className={`text-3xl font-black ${netBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
-                        R$ {netBalance.toFixed(2)}
+                        {netBalance.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                 </div>
             </div>
@@ -185,7 +201,7 @@ export default function DailyMovement() {
                                     {getMethodIcon(method)}
                                     <span className="text-gray-300 font-medium">{method}</span>
                                 </div>
-                                <span className="text-white font-bold">R$ {amount.toFixed(2)}</span>
+                                <span className="text-white font-bold">{amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                             </div>
                         ))}
 
@@ -219,7 +235,7 @@ export default function DailyMovement() {
                                     </div>
                                 </div>
                                 <span className={`font-black ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
-                                    {t.type === 'income' ? '+' : '-'} R$ {t.amount}
+                                    {t.type === 'income' ? '+' : '-'} {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                 </span>
                             </div>
                         ))}
@@ -258,14 +274,12 @@ export default function DailyMovement() {
                             <div>
                                 <label className="block text-sm text-gray-400 mb-1">Valor (R$)</label>
                                 <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0.01"
+                                    type="text"
                                     required
                                     value={expenseAmount}
-                                    onChange={(e) => setExpenseAmount(e.target.value)}
+                                    onChange={(e) => setExpenseAmount(formatInputCurrency(e.target.value))}
                                     className="w-full bg-black border border-neutral-700 rounded-lg p-3 text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
-                                    placeholder="0.00"
+                                    placeholder="R$ 0,00"
                                 />
                             </div>
                             
