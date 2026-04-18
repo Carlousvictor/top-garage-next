@@ -62,8 +62,8 @@ export default function DashboardHome({ metrics }) {
             textColor: 'text-cyan-400'
         },
         {
-            title: 'Financeiro Total',
-            desc: 'Visão geral, contas a pagar e receber.',
+            title: 'Financeiro',
+            desc: 'Visão geral, contas a pagar e receber, relatórios.',
             icon: CircleDollarSign,
             path: '/financial',
             color: 'from-teal-600 to-teal-900',
