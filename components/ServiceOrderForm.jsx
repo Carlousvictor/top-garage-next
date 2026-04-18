@@ -4,6 +4,37 @@ import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
+import CreatableSelect from 'react-select/creatable'
+
+// Dark theme for react-select, alinhado ao resto do app (neutral-800/700 + vermelho).
+const selectStyles = {
+    control: (base, state) => ({
+        ...base,
+        backgroundColor: '#262626',
+        borderColor: state.isFocused ? '#ef4444' : '#404040',
+        borderRadius: 8,
+        minHeight: 42,
+        boxShadow: 'none',
+        '&:hover': { borderColor: '#ef4444' }
+    }),
+    singleValue: (base) => ({ ...base, color: '#ffffff' }),
+    input: (base) => ({ ...base, color: '#ffffff' }),
+    placeholder: (base) => ({ ...base, color: '#9ca3af' }),
+    menu: (base) => ({
+        ...base,
+        backgroundColor: '#171717',
+        border: '1px solid #404040',
+        zIndex: 30
+    }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? '#404040' : 'transparent',
+        color: '#ffffff',
+        cursor: 'pointer'
+    }),
+    indicatorSeparator: () => ({ display: 'none' }),
+    dropdownIndicator: (base) => ({ ...base, color: '#9ca3af' })
+}
 
 export default function ServiceOrderForm({ order }) {
     const supabase = createClient()
@@ -70,8 +101,8 @@ export default function ServiceOrderForm({ order }) {
         fetchVehicles()
     }, [clientId])
 
+    // Adds catalog item (product/service) from a selected react-select option.
     const handleAddItem = (type) => {
-        // ... preserving other functions until the render
         if (type === 'product' && selectedProduct) {
             const product = products.find(p => p.id === parseInt(selectedProduct))
             if (product) {
@@ -102,6 +133,21 @@ export default function ServiceOrderForm({ order }) {
                 setSelectedService('')
             }
         }
+    }
+
+    // Adds a free-text (custom) item typed directly in the CreatableSelect.
+    // Custom items are ephemeral: they exist only inside this OS and don't
+    // create a row in products/services.
+    const handleAddCustomItem = (type, label) => {
+        const description = (label || '').trim()
+        if (!description) return
+        setItems([...items, {
+            type,
+            description,
+            quantity: 1,
+            unit_price: 0,
+            custom: true
+        }])
     }
 
     const handleRemoveItem = (index) => {
@@ -367,16 +413,30 @@ export default function ServiceOrderForm({ order }) {
 
                         <div className="flex gap-2 mb-4">
                             <div className="flex-1">
-                                <select
-                                    value={selectedProduct}
-                                    onChange={(e) => setSelectedProduct(e.target.value)}
-                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                                >
-                                    <option value="">Adicionar Produto...</option>
-                                    {products.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name} - R$ {p.selling_price}</option>
-                                    ))}
-                                </select>
+                                <CreatableSelect
+                                    instanceId="os-product-select"
+                                    isClearable
+                                    placeholder="Buscar ou digitar produto..."
+                                    noOptionsMessage={() => 'Nenhum produto. Digite para criar um item avulso.'}
+                                    formatCreateLabel={(input) => `Adicionar item avulso: "${input}"`}
+                                    value={selectedProduct
+                                        ? (() => {
+                                            const p = products.find(pp => pp.id === parseInt(selectedProduct))
+                                            return p ? { value: p.id, label: `${p.name} - R$ ${p.selling_price}` } : null
+                                        })()
+                                        : null
+                                    }
+                                    options={products.map(p => ({
+                                        value: p.id,
+                                        label: `${p.name} - R$ ${p.selling_price}`
+                                    }))}
+                                    onChange={(opt) => setSelectedProduct(opt ? String(opt.value) : '')}
+                                    onCreateOption={(input) => {
+                                        handleAddCustomItem('product', input)
+                                        setSelectedProduct('')
+                                    }}
+                                    styles={selectStyles}
+                                />
                             </div>
                             <button
                                 type="button"
@@ -389,16 +449,30 @@ export default function ServiceOrderForm({ order }) {
 
                         <div className="flex gap-2 mb-4">
                             <div className="flex-1">
-                                <select
-                                    value={selectedService}
-                                    onChange={(e) => setSelectedService(e.target.value)}
-                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                                >
-                                    <option value="">Adicionar Serviço...</option>
-                                    {services.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name} - R$ {s.price}</option>
-                                    ))}
-                                </select>
+                                <CreatableSelect
+                                    instanceId="os-service-select"
+                                    isClearable
+                                    placeholder="Buscar ou digitar serviço..."
+                                    noOptionsMessage={() => 'Nenhum serviço. Digite para criar um item avulso.'}
+                                    formatCreateLabel={(input) => `Adicionar serviço avulso: "${input}"`}
+                                    value={selectedService
+                                        ? (() => {
+                                            const s = services.find(ss => ss.id === parseInt(selectedService))
+                                            return s ? { value: s.id, label: `${s.name} - R$ ${s.price}` } : null
+                                        })()
+                                        : null
+                                    }
+                                    options={services.map(s => ({
+                                        value: s.id,
+                                        label: `${s.name} - R$ ${s.price}`
+                                    }))}
+                                    onChange={(opt) => setSelectedService(opt ? String(opt.value) : '')}
+                                    onCreateOption={(input) => {
+                                        handleAddCustomItem('service', input)
+                                        setSelectedService('')
+                                    }}
+                                    styles={selectStyles}
+                                />
                             </div>
                             <button
                                 type="button"

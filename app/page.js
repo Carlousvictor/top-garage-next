@@ -11,17 +11,17 @@ export default async function Home() {
         redirect('/login')
     }
 
-    // Attempt to get user's tenant_id loosely to avoid hard crashes if not immediately available
-    // For a deeper implementation, we use AuthContext, but here we can do a quick check via profiles
     const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()
     const tenantId = profile?.tenant_id
 
     let activeOS = 0
     let lowStock = 0
     let todayIncome = 0
+    let todayNet = 0
+    let todayClosed = false
+    let pendingClosuresCount = 0
 
     if (tenantId) {
-        // 1. Get active OS count
         const { count: activeCount } = await supabase
             .from('service_orders')
             .select('*', { count: 'exact', head: true })
@@ -30,37 +30,83 @@ export default async function Home() {
 
         activeOS = activeCount || 0
 
-        // 2. Get low stock count directly via SQL view equivalent logic or crude count (requires fetching min_quantity and comparing, doing a rough check here)
-        // Since we can't do column comparison easily in basic PostgREST without a view, 
-        // we'll fetch products and filter in JS. Not ideal for huge DBs, but fine for local scale.
         const { data: prods } = await supabase
             .from('products')
             .select('quantity, min_quantity')
             .eq('tenant_id', tenantId)
-        
+
         lowStock = prods?.filter(p => p.quantity <= (p.min_quantity || 0)).length || 0
 
-        // 3. Today's income
         const now = new Date()
+        const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
         const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString()
         const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString()
 
         const { data: txs } = await supabase
             .from('transactions')
-            .select('amount')
+            .select('amount, type, status')
             .eq('tenant_id', tenantId)
-            .eq('type', 'income')
             .eq('status', 'paid')
             .gte('date', startOfDay)
             .lte('date', endOfDay)
 
-        todayIncome = txs?.reduce((acc, t) => acc + Number(t.amount), 0) || 0
+        if (txs) {
+            todayIncome = txs
+                .filter(t => t.type === 'income')
+                .reduce((acc, t) => acc + Number(t.amount), 0)
+
+            const todayExpense = txs
+                .filter(t => t.type === 'expense')
+                .reduce((acc, t) => acc + Number(t.amount), 0)
+
+            todayNet = todayIncome - todayExpense
+        }
+
+        const { data: todayClosure } = await supabase
+            .from('daily_closures')
+            .select('status')
+            .eq('tenant_id', tenantId)
+            .eq('closure_date', todayDateStr)
+            .maybeSingle()
+
+        todayClosed = todayClosure?.status === 'closed'
+
+        // Pending days = days with movement in the past that aren't closed yet.
+        // Look back up to 60 days to keep it bounded.
+        const lookbackDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60).toISOString()
+
+        const { data: pastTxs } = await supabase
+            .from('transactions')
+            .select('date')
+            .eq('tenant_id', tenantId)
+            .gte('date', lookbackDate)
+            .lt('date', startOfDay)
+
+        const { data: closures } = await supabase
+            .from('daily_closures')
+            .select('closure_date')
+            .eq('tenant_id', tenantId)
+            .gte('closure_date', lookbackDate.substring(0, 10))
+            .eq('status', 'closed')
+
+        const closedSet = new Set((closures || []).map(c => c.closure_date))
+        const movementDays = new Set(
+            (pastTxs || []).map(t => {
+                const d = new Date(t.date)
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+            })
+        )
+
+        pendingClosuresCount = Array.from(movementDays).filter(d => !closedSet.has(d)).length
     }
 
     const metrics = {
         activeOS,
         lowStock,
-        todayIncome
+        todayIncome,
+        todayNet,
+        todayClosed,
+        pendingClosuresCount
     }
 
     return (
