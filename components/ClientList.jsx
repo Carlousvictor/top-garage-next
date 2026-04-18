@@ -13,7 +13,7 @@ export default function ClientList({ initialClients }) {
     const [currentClient, setCurrentClient] = useState({ name: '', email: '', phone: '', document: '' })
     const [loading, setLoading] = useState(false)
     const [vehicles, setVehicles] = useState([])
-    const [newVehicle, setNewVehicle] = useState({ plate: '', brand: '', model: '', year: '', color: '' })
+    const [newVehicle, setNewVehicle] = useState({ plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '', color: '', fuel_type: '', chassi: '', renavam: '', engine_displacement: '', city: '', state: '', observations: '' })
 
     const fetchClients = async () => {
         const { data } = await supabase.from('clients').select('*').order('name')
@@ -34,7 +34,7 @@ export default function ClientList({ initialClients }) {
     const handleNew = () => {
         setCurrentClient({ name: '', email: '', phone: '', document: '' })
         setVehicles([])
-        setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
+        setNewVehicle({ plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '', color: '', fuel_type: '', chassi: '', renavam: '', engine_displacement: '', city: '', state: '', observations: '' })
         setIsEditing(true)
     }
 
@@ -108,11 +108,20 @@ export default function ClientList({ initialClients }) {
                     plate: newVehicle.plate.toUpperCase(),
                     brand: newVehicle.brand,
                     model: newVehicle.model,
+                    submodel: newVehicle.submodel,
                     year: newVehicle.year,
-                    color: newVehicle.color
+                    manufacture_year: newVehicle.manufacture_year,
+                    color: newVehicle.color,
+                    fuel_type: newVehicle.fuel_type,
+                    chassi: newVehicle.chassi,
+                    renavam: newVehicle.renavam,
+                    engine_displacement: newVehicle.engine_displacement,
+                    city: newVehicle.city,
+                    state: newVehicle.state,
+                    observations: newVehicle.observations,
                 }
                 await supabase.from('vehicles').insert([payload])
-                setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
+                setNewVehicle({ plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '', color: '', fuel_type: '', chassi: '', renavam: '', engine_displacement: '', city: '', state: '', observations: '' })
                 fetchVehicles(currentClient.id)
             } catch (error) {
                 alert('Erro ao adicionar veículo: ' + error.message)
@@ -125,7 +134,7 @@ export default function ClientList({ initialClients }) {
                 ...newVehicle,
                 plate: newVehicle.plate.toUpperCase()
             }])
-            setNewVehicle({ plate: '', brand: '', model: '', year: '', color: '' })
+            setNewVehicle({ plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '', color: '', fuel_type: '', chassi: '', renavam: '', engine_displacement: '', city: '', state: '', observations: '' })
         }
     }
 
@@ -149,8 +158,16 @@ export default function ClientList({ initialClients }) {
                 ...prev,
                 brand: data.marca || '',
                 model: data.modelo || '',
+                submodel: data.submodelo || '',
                 year: data.ano?.toString() || '',
-                color: data.cor || ''
+                manufacture_year: data.anoFabricacao?.toString() || '',
+                color: data.cor || '',
+                fuel_type: data.combustivel || '',
+                chassi: data.chassi || '',
+                renavam: data.renavam || '',
+                engine_displacement: data.cilindrada || '',
+                city: data.cidade || '',
+                state: data.uf || '',
             }))
         } catch (error) {
             alert('Erro ao buscar veículo: ' + error.message)
@@ -259,7 +276,22 @@ export default function ClientList({ initialClients }) {
                                         <div key={v.id} className="bg-neutral-900 border border-neutral-700 p-4 rounded-lg flex justify-between items-center">
                                             <div>
                                                 <div className="font-bold text-white text-lg">{v.plate}</div>
-                                                <div className="text-sm text-gray-400">{v.brand} {v.model} {v.year ? `(${v.year})` : ''}</div>
+                                                <div className="text-sm text-gray-400">
+                                                    {v.brand} {v.model} {v.submodel ? v.submodel : ''} {v.year ? `(${v.year})` : ''}
+                                                </div>
+                                                {(v.fuel_type || v.color || v.engine_displacement) && (
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {[v.color, v.fuel_type, v.engine_displacement].filter(Boolean).join(' · ')}
+                                                    </div>
+                                                )}
+                                                {(v.city || v.state) && (
+                                                    <div className="text-xs text-gray-500">
+                                                        {[v.city, v.state].filter(Boolean).join(' / ')}
+                                                    </div>
+                                                )}
+                                                {v.chassi && (
+                                                    <div className="text-[11px] text-gray-600 font-mono mt-0.5">chassi: {v.chassi}</div>
+                                                )}
                                             </div>
                                             <button
                                                 type="button"
@@ -320,14 +352,34 @@ export default function ClientList({ initialClients }) {
                                             placeholder="Ex: Argo"
                                         />
                                     </div>
-                                    <div className="flex-1 min-w-[80px]">
-                                        <label className="text-xs text-gray-400 block mb-1">Ano</label>
+                                    <div className="flex-1 min-w-[140px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Submodelo / Versão</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.submodel}
+                                            onChange={e => setNewVehicle({ ...newVehicle, submodel: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="Ex: Drive 1.3"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[90px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Ano modelo</label>
                                         <input
                                             type="text"
                                             value={newVehicle.year}
                                             onChange={e => setNewVehicle({ ...newVehicle, year: e.target.value })}
                                             className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
                                             placeholder="2021"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[90px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Ano fab.</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.manufacture_year}
+                                            onChange={e => setNewVehicle({ ...newVehicle, manufacture_year: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="2020"
                                         />
                                     </div>
                                     <div className="flex-1 min-w-[100px]">
@@ -340,6 +392,80 @@ export default function ClientList({ initialClients }) {
                                             placeholder="Preto"
                                         />
                                     </div>
+                                    <div className="flex-1 min-w-[120px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Combustível</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.fuel_type}
+                                            onChange={e => setNewVehicle({ ...newVehicle, fuel_type: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="Flex"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[100px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Cilindrada</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.engine_displacement}
+                                            onChange={e => setNewVehicle({ ...newVehicle, engine_displacement: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="1.6"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[180px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Chassi</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.chassi}
+                                            onChange={e => setNewVehicle({ ...newVehicle, chassi: e.target.value.toUpperCase() })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 font-mono"
+                                            placeholder="9BWZZZ377VT004251"
+                                            maxLength={17}
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[140px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Renavam</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.renavam}
+                                            onChange={e => setNewVehicle({ ...newVehicle, renavam: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 font-mono"
+                                            placeholder="00123456789"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[140px]">
+                                        <label className="text-xs text-gray-400 block mb-1">Cidade</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.city}
+                                            onChange={e => setNewVehicle({ ...newVehicle, city: e.target.value })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                            placeholder="Rio de Janeiro"
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-w-[70px] max-w-[90px]">
+                                        <label className="text-xs text-gray-400 block mb-1">UF</label>
+                                        <input
+                                            type="text"
+                                            value={newVehicle.state}
+                                            onChange={e => setNewVehicle({ ...newVehicle, state: e.target.value.toUpperCase() })}
+                                            className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2 uppercase"
+                                            placeholder="RJ"
+                                            maxLength={2}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="mt-3">
+                                    <label className="text-xs text-gray-400 block mb-1">Observações</label>
+                                    <textarea
+                                        value={newVehicle.observations}
+                                        onChange={e => setNewVehicle({ ...newVehicle, observations: e.target.value })}
+                                        rows={2}
+                                        className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2"
+                                        placeholder="Ex: kit GNV instalado, suspensão rebaixada, pneu especial…"
+                                    />
+                                </div>
+                                <div className="mt-3 flex justify-end">
                                     <button
                                         type="button"
                                         onClick={handleAddVehicle}
