@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '../../../../utils/supabase/server'
 
 const PLATE_REGEX = /^[A-Z]{3}[0-9][A-Z0-9][0-9]{2}$/
-const APIBRASIL_URL = 'https://gateway.apibrasil.io/api/v2/vehicles/dados'
+const APIBRASIL_URL = 'https://cluster.apigratis.com/api/v2/vehicles/dados'
 
 function normalizePlate(raw) {
     return String(raw || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase()
@@ -19,8 +19,8 @@ function mapApiBrasilResponse(payload) {
         anoFabricacao: r.anoFabricacao || r.ANO_FABRICACAO || r.ano || '',
         cor: r.cor || r.COR || r.color || '',
         combustivel: extra.combustivel || r.combustivel || r.fuel || '',
-        chassi: r.chassi || r.CHASSI || '',
-        renavam: r.renavam || r.RENAVAM || '',
+        chassi: extra.chassi || r.chassi || r.CHASSI || '',
+        renavam: extra.renavam || r.renavam || r.RENAVAM || '',
         cilindrada: extra.cilindrada || r.cilindrada || '',
         cidade: extra.municipio || r.municipio || r.cidade || '',
         uf: extra.uf || r.uf || r.UF || '',
