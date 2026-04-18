@@ -10,14 +10,20 @@ function normalizePlate(raw) {
 
 function mapApiBrasilResponse(payload) {
     const r = payload?.response || payload || {}
+    const extra = r.extra || {}
     return {
         marca: r.MARCA || r.marca || r.brand || '',
         modelo: r.MODELO || r.modelo || r.model || '',
-        ano: r.anoModelo || r.ano || r.anoFabricacao || r.year || '',
+        submodelo: r.SUBMODELO || r.submodelo || r.VERSAO || r.versao || '',
+        ano: r.anoModelo || r.ano || r.year || '',
+        anoFabricacao: r.anoFabricacao || r.ANO_FABRICACAO || r.ano || '',
         cor: r.cor || r.COR || r.color || '',
-        combustivel: r?.extra?.combustivel || r.combustivel || r.fuel || '',
+        combustivel: extra.combustivel || r.combustivel || r.fuel || '',
         chassi: r.chassi || r.CHASSI || '',
         renavam: r.renavam || r.RENAVAM || '',
+        cilindrada: extra.cilindrada || r.cilindrada || '',
+        cidade: extra.municipio || r.municipio || r.cidade || '',
+        uf: extra.uf || r.uf || r.UF || '',
     }
 }
 
@@ -27,7 +33,7 @@ function mapApiBrasilResponse(payload) {
 async function findCachedVehicle(supabase, plate, tenantId) {
     const { data } = await supabase
         .from('vehicles')
-        .select('brand, model, year, color, fuel_type, chassi, renavam')
+        .select('brand, model, submodel, year, manufacture_year, color, fuel_type, chassi, renavam, engine_displacement, city, state')
         .eq('plate', plate)
         .eq('tenant_id', tenantId)
         .limit(1)
@@ -36,11 +42,16 @@ async function findCachedVehicle(supabase, plate, tenantId) {
     return {
         marca: data.brand || '',
         modelo: data.model || '',
+        submodelo: data.submodel || '',
         ano: data.year || '',
+        anoFabricacao: data.manufacture_year || '',
         cor: data.color || '',
         combustivel: data.fuel_type || '',
         chassi: data.chassi || '',
         renavam: data.renavam || '',
+        cilindrada: data.engine_displacement || '',
+        cidade: data.city || '',
+        uf: data.state || '',
     }
 }
 
