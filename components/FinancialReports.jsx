@@ -3,8 +3,13 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
     BarChart3, TrendingUp, TrendingDown, Wallet,
-    Wrench, Package, Users, CalendarDays, Download, Printer
+    Wrench, Package, Users, CalendarDays, Download, Printer,
+    LineChart as LineChartIcon, AlertTriangle, ArrowUp, ArrowDown, Minus,
 } from 'lucide-react'
+import {
+    LineChart, Line, XAxis, YAxis, Tooltip, Legend,
+    ResponsiveContainer, CartesianGrid,
+} from 'recharts'
 
 const BRL = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const INT = (n) => Number(n || 0).toLocaleString('pt-BR')
@@ -39,7 +44,40 @@ function Bar({ value, max, color = 'bg-blue-500' }) {
     )
 }
 
-function Card({ title, value, sub, Icon, tint }) {
+function computeDelta(current, previous) {
+    if (!previous) return { pct: null, direction: 'flat' }
+    const diff = current - previous
+    if (previous === 0) {
+        return { pct: current === 0 ? 0 : null, direction: diff === 0 ? 'flat' : 'up' }
+    }
+    const pct = (diff / Math.abs(previous)) * 100
+    const direction = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat'
+    return { pct, direction }
+}
+
+function DeltaBadge({ delta, invertColor = false, prevValue, formatter = BRL }) {
+    if (delta.pct === null) {
+        return <span className="text-xs text-gray-500">vs anterior: —</span>
+    }
+    const { pct, direction } = delta
+    const Icon = direction === 'up' ? ArrowUp : direction === 'down' ? ArrowDown : Minus
+    const goodUp = !invertColor
+    const color =
+        direction === 'flat'
+            ? 'text-gray-400'
+            : (direction === 'up') === goodUp
+                ? 'text-green-400'
+                : 'text-red-400'
+    return (
+        <span className={`text-xs ${color} inline-flex items-center gap-1`}>
+            <Icon className="w-3 h-3" />
+            {Math.abs(pct).toFixed(0)}%
+            <span className="text-gray-500 ml-1">({formatter(prevValue)})</span>
+        </span>
+    )
+}
+
+function Card({ title, value, sub, Icon, tint, delta, prevValue, invertDelta }) {
     return (
         <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4">
             <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
@@ -47,6 +85,11 @@ function Card({ title, value, sub, Icon, tint }) {
                 {Icon && <Icon className={`w-4 h-4 ${tint || 'text-gray-500'}`} />}
             </div>
             <div className="text-2xl font-bold text-white">{value}</div>
+            {delta && (
+                <div className="mt-1">
+                    <DeltaBadge delta={delta} invertColor={invertDelta} prevValue={prevValue} />
+                </div>
+            )}
             {sub && <div className="text-xs text-gray-500 mt-1">{sub}</div>}
         </div>
     )
@@ -54,10 +97,12 @@ function Card({ title, value, sub, Icon, tint }) {
 
 const TABS = [
     { id: 'summary', label: 'Resumo', Icon: BarChart3 },
+    { id: 'evolution', label: 'Evolução', Icon: LineChartIcon },
     { id: 'services', label: 'Serviços', Icon: Wrench },
     { id: 'products', label: 'Peças', Icon: Package },
     { id: 'clients', label: 'Clientes', Icon: Users },
     { id: 'daily', label: 'Fechamentos', Icon: CalendarDays },
+    { id: 'stock', label: 'Estoque', Icon: AlertTriangle },
 ]
 
 export default function FinancialReports({
@@ -67,6 +112,10 @@ export default function FinancialReports({
     serviceOrders,
     items,
     dailyClosures,
+    prevTransactions = [],
+    prevServiceOrders = [],
+    lowStock = [],
+    prevPeriod = null,
 }) {
     const router = useRouter()
     const [tab, setTab] = useState('summary')
@@ -95,6 +144,25 @@ export default function FinancialReports({
         return { income, expense, balance: income - expense, ordersRevenue, ordersCount, avgTicket, byMethod }
     }, [transactions, serviceOrders])
 
+    const prevSummary = useMemo(() => {
+        const income = prevTransactions.filter((t) => t.type === 'income').reduce((a, t) => a + Number(t.amount || 0), 0)
+        const expense = prevTransactions.filter((t) => t.type === 'expense').reduce((a, t) => a + Number(t.amount || 0), 0)
+        const ordersCount = prevServiceOrders.length
+        const ordersRevenue = prevServiceOrders.reduce((a, o) => a + Number(o.total || 0), 0)
+        const avgTicket = ordersCount ? ordersRevenue / ordersCount : 0
+        return { income, expense, balance: income - expense, ordersCount, avgTicket }
+    }, [prevTransactions, prevServiceOrders])
+
+    const deltas = useMemo(
+        () => ({
+            income: computeDelta(summary.income, prevSummary.income),
+            expense: computeDelta(summary.expense, prevSummary.expense),
+            balance: computeDelta(summary.balance, prevSummary.balance),
+            ordersCount: computeDelta(summary.ordersCount, prevSummary.ordersCount),
+        }),
+        [summary, prevSummary],
+    )
+
     const topServices = useMemo(() => {
         const map = new Map()
         items.forEach((it) => {
@@ -102,13 +170,20 @@ export default function FinancialReports({
             const name = it.services?.name || it.description || 'Serviço sem nome'
             const qty = Number(it.quantity || 0)
             const revenue = qty * Number(it.unit_price || 0)
-            const cur = map.get(name) || { name, qty: 0, revenue: 0 }
+            const unitCost = Number(it.services?.cost || 0)
+            const cost = qty * unitCost
+            const cur = map.get(name) || { name, qty: 0, revenue: 0, cost: 0 }
             cur.qty += qty
             cur.revenue += revenue
+            cur.cost += cost
             map.set(name, cur)
         })
         return [...map.values()]
-            .map((r) => ({ ...r, avg: r.qty ? r.revenue / r.qty : 0 }))
+            .map((r) => ({
+                ...r,
+                profit: r.revenue - r.cost,
+                margin: r.revenue > 0 ? ((r.revenue - r.cost) / r.revenue) * 100 : 0,
+            }))
             .sort((a, b) => b.qty - a.qty)
             .slice(0, 20)
     }, [items])
@@ -144,24 +219,53 @@ export default function FinancialReports({
         return [...map.values()].sort((a, b) => b.revenue - a.revenue).slice(0, 20)
     }, [serviceOrders])
 
+    const evolutionData = useMemo(() => {
+        // Agrupa transactions por dia dentro do período.
+        const map = new Map()
+        const fromDate = new Date(`${from}T00:00:00`)
+        const toDate = new Date(`${to}T00:00:00`)
+        for (let d = new Date(fromDate); d <= toDate; d.setDate(d.getDate() + 1)) {
+            const key = d.toISOString().slice(0, 10)
+            map.set(key, { date: key, income: 0, expense: 0 })
+        }
+        transactions.forEach((t) => {
+            const key = (t.date || '').slice(0, 10)
+            const bucket = map.get(key)
+            if (!bucket) return
+            if (t.type === 'income') bucket.income += Number(t.amount || 0)
+            else if (t.type === 'expense') bucket.expense += Number(t.amount || 0)
+        })
+        return [...map.values()].map((d) => ({
+            ...d,
+            label: d.date.slice(8, 10) + '/' + d.date.slice(5, 7),
+            balance: d.income - d.expense,
+        }))
+    }, [transactions, from, to])
+
     const maxServiceQty = topServices[0]?.qty || 0
     const maxProductQty = topProducts[0]?.qty || 0
     const maxClientRevenue = topClients[0]?.revenue || 0
+    const totalLowStockValue = lowStock.reduce((a, p) => {
+        const shortage = Math.max(0, Number(p.min_quantity || 0) - Number(p.quantity || 0))
+        return a + shortage * Number(p.cost_price || 0)
+    }, 0)
 
     const periodLabel = `${from} → ${to}`
+    const prevLabel = prevPeriod ? `${prevPeriod.from} → ${prevPeriod.to}` : null
 
     const exportCurrent = () => {
         if (tab === 'summary') {
             downloadCSV(
                 [
                     ['Período', periodLabel],
+                    ['Período anterior', prevLabel || '-'],
                     [],
-                    ['Receita total', summary.income.toFixed(2)],
-                    ['Despesa total', summary.expense.toFixed(2)],
-                    ['Saldo líquido', summary.balance.toFixed(2)],
-                    ['OSs concluídas', summary.ordersCount],
-                    ['Faturamento em OS', summary.ordersRevenue.toFixed(2)],
-                    ['Ticket médio', summary.avgTicket.toFixed(2)],
+                    ['Métrica', 'Atual', 'Anterior', 'Delta %'],
+                    ['Receita', summary.income.toFixed(2), prevSummary.income.toFixed(2), deltas.income.pct?.toFixed(1) ?? '-'],
+                    ['Despesa', summary.expense.toFixed(2), prevSummary.expense.toFixed(2), deltas.expense.pct?.toFixed(1) ?? '-'],
+                    ['Saldo', summary.balance.toFixed(2), prevSummary.balance.toFixed(2), deltas.balance.pct?.toFixed(1) ?? '-'],
+                    ['OSs concluídas', summary.ordersCount, prevSummary.ordersCount, deltas.ordersCount.pct?.toFixed(1) ?? '-'],
+                    ['Ticket médio', summary.avgTicket.toFixed(2), prevSummary.avgTicket.toFixed(2), '-'],
                     [],
                     ['Receita por método de pagamento'],
                     ...Object.entries(summary.byMethod).map(([m, v]) => [m, Number(v).toFixed(2)]),
@@ -171,8 +275,15 @@ export default function FinancialReports({
         } else if (tab === 'services') {
             downloadCSV(
                 [
-                    ['Serviço', 'Qtd realizada', 'Receita (R$)', 'Ticket médio (R$)'],
-                    ...topServices.map((r) => [r.name, r.qty, r.revenue.toFixed(2), r.avg.toFixed(2)]),
+                    ['Serviço', 'Qtd', 'Receita (R$)', 'Custo (R$)', 'Lucro (R$)', 'Margem %'],
+                    ...topServices.map((r) => [
+                        r.name,
+                        r.qty,
+                        r.revenue.toFixed(2),
+                        r.cost.toFixed(2),
+                        r.profit.toFixed(2),
+                        r.margin.toFixed(1),
+                    ]),
                 ],
                 `servicos_${from}_a_${to}.csv`,
             )
@@ -206,6 +317,32 @@ export default function FinancialReports({
                 ],
                 `fechamentos_${from}_a_${to}.csv`,
             )
+        } else if (tab === 'evolution') {
+            downloadCSV(
+                [
+                    ['Data', 'Receita (R$)', 'Despesa (R$)', 'Saldo (R$)'],
+                    ...evolutionData.map((d) => [d.date, d.income.toFixed(2), d.expense.toFixed(2), d.balance.toFixed(2)]),
+                ],
+                `evolucao_${from}_a_${to}.csv`,
+            )
+        } else if (tab === 'stock') {
+            downloadCSV(
+                [
+                    ['Peça', 'Estoque atual', 'Estoque mínimo', 'Faltam', 'Custo unitário (R$)', 'Valor p/ repor (R$)'],
+                    ...lowStock.map((p) => {
+                        const shortage = Math.max(0, Number(p.min_quantity || 0) - Number(p.quantity || 0))
+                        return [
+                            p.name,
+                            p.quantity,
+                            p.min_quantity || 0,
+                            shortage,
+                            Number(p.cost_price || 0).toFixed(2),
+                            (shortage * Number(p.cost_price || 0)).toFixed(2),
+                        ]
+                    }),
+                ],
+                `estoque_baixo_${new Date().toISOString().slice(0, 10)}.csv`,
+            )
         }
     }
 
@@ -221,7 +358,10 @@ export default function FinancialReports({
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-white print:text-black">Relatórios Financeiros</h2>
-                    <p className="text-sm text-gray-400 print:text-gray-700">Período: {periodLabel}</p>
+                    <p className="text-sm text-gray-400 print:text-gray-700">
+                        Período: {periodLabel}
+                        {prevLabel && <span className="ml-2 text-gray-500">(comparado a {prevLabel})</span>}
+                    </p>
                 </div>
                 <div className="flex flex-wrap items-end gap-2 no-print">
                     <div>
@@ -278,6 +418,11 @@ export default function FinancialReports({
                     >
                         <Icon className="w-4 h-4" />
                         {label}
+                        {id === 'stock' && lowStock.length > 0 && (
+                            <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded-full ml-1">
+                                {lowStock.length}
+                            </span>
+                        )}
                     </button>
                 ))}
             </div>
@@ -285,13 +430,30 @@ export default function FinancialReports({
             {tab === 'summary' && (
                 <div className="space-y-6">
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <Card title="Receita" value={BRL(summary.income)} Icon={TrendingUp} tint="text-green-400" />
-                        <Card title="Despesa" value={BRL(summary.expense)} Icon={TrendingDown} tint="text-red-400" />
+                        <Card
+                            title="Receita"
+                            value={BRL(summary.income)}
+                            Icon={TrendingUp}
+                            tint="text-green-400"
+                            delta={deltas.income}
+                            prevValue={prevSummary.income}
+                        />
+                        <Card
+                            title="Despesa"
+                            value={BRL(summary.expense)}
+                            Icon={TrendingDown}
+                            tint="text-red-400"
+                            delta={deltas.expense}
+                            prevValue={prevSummary.expense}
+                            invertDelta
+                        />
                         <Card
                             title="Saldo líquido"
                             value={BRL(summary.balance)}
                             Icon={Wallet}
                             tint={summary.balance >= 0 ? 'text-green-400' : 'text-red-400'}
+                            delta={deltas.balance}
+                            prevValue={prevSummary.balance}
                         />
                         <Card
                             title="OSs concluídas"
@@ -299,6 +461,8 @@ export default function FinancialReports({
                             sub={`Ticket médio ${BRL(summary.avgTicket)}`}
                             Icon={Wrench}
                             tint="text-blue-400"
+                            delta={deltas.ordersCount}
+                            prevValue={prevSummary.ordersCount}
                         />
                     </div>
                     <div>
@@ -339,6 +503,35 @@ export default function FinancialReports({
                 </div>
             )}
 
+            {tab === 'evolution' && (
+                <div className="space-y-4">
+                    <div className="bg-black/30 border border-neutral-800 rounded-lg p-4">
+                        <h3 className="text-sm font-semibold text-gray-300 mb-3">Receita vs Despesa no período</h3>
+                        <div style={{ width: '100%', height: 360 }}>
+                            <ResponsiveContainer>
+                                <LineChart data={evolutionData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+                                    <XAxis dataKey="label" stroke="#9ca3af" fontSize={11} />
+                                    <YAxis stroke="#9ca3af" fontSize={11} tickFormatter={(v) => `R$ ${Math.round(v)}`} />
+                                    <Tooltip
+                                        contentStyle={{ background: '#0a0a0a', border: '1px solid #27272a', borderRadius: 8 }}
+                                        formatter={(v) => BRL(v)}
+                                        labelStyle={{ color: '#f3f4f6' }}
+                                    />
+                                    <Legend wrapperStyle={{ color: '#f3f4f6', fontSize: 12 }} />
+                                    <Line type="monotone" dataKey="income" name="Receita" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="expense" name="Despesa" stroke="#ef4444" strokeWidth={2} dot={false} />
+                                    <Line type="monotone" dataKey="balance" name="Saldo" stroke="#3b82f6" strokeWidth={2} strokeDasharray="4 4" dot={false} />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                    <div className="text-xs text-gray-500">
+                        Cada ponto é o fechamento do dia. Saldo = receita − despesa. Dias sem movimento aparecem em zero.
+                    </div>
+                </div>
+            )}
+
             {tab === 'services' && (
                 <RankingTable
                     rows={topServices}
@@ -346,12 +539,20 @@ export default function FinancialReports({
                         { label: 'Serviço', key: 'name' },
                         { label: 'Qtd', key: 'qty', format: INT, align: 'right' },
                         { label: 'Receita', key: 'revenue', format: BRL, align: 'right' },
-                        { label: 'Ticket médio', key: 'avg', format: BRL, align: 'right' },
+                        { label: 'Custo', key: 'cost', format: BRL, align: 'right' },
+                        { label: 'Lucro', key: 'profit', format: BRL, align: 'right' },
+                        {
+                            label: 'Margem',
+                            key: 'margin',
+                            format: (v) => `${Number(v).toFixed(0)}%`,
+                            align: 'right',
+                        },
                     ]}
                     barKey="qty"
                     barMax={maxServiceQty}
                     barColor="bg-blue-500"
                     emptyMsg="Nenhum serviço realizado no período."
+                    footnote="Margem depende do campo 'Custo' estar preenchido em cada serviço (módulo Serviços)."
                 />
             )}
 
@@ -444,40 +645,96 @@ export default function FinancialReports({
                     )}
                 </div>
             )}
+
+            {tab === 'stock' && (
+                <div className="space-y-4">
+                    {lowStock.length === 0 ? (
+                        <div className="text-center py-8">
+                            <p className="text-green-400 text-sm">✓ Nenhuma peça abaixo do estoque mínimo.</p>
+                            <p className="text-gray-500 text-xs mt-1">Tudo em dia.</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="bg-red-900/20 border border-red-800 rounded-lg p-4 flex items-start gap-3">
+                                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                                <div>
+                                    <div className="text-sm font-semibold text-red-300">
+                                        {lowStock.length} {lowStock.length === 1 ? 'peça' : 'peças'} abaixo do estoque mínimo
+                                    </div>
+                                    <div className="text-xs text-gray-400 mt-1">
+                                        Valor estimado para repor até o mínimo: {BRL(totalLowStockValue)}
+                                    </div>
+                                </div>
+                            </div>
+                            <table className="w-full text-sm text-left">
+                                <thead className="text-xs uppercase text-gray-400 border-b border-neutral-800">
+                                    <tr>
+                                        <th className="py-2">Peça</th>
+                                        <th className="py-2 text-right">Atual</th>
+                                        <th className="py-2 text-right">Mínimo</th>
+                                        <th className="py-2 text-right">Faltam</th>
+                                        <th className="py-2 text-right">Custo un.</th>
+                                        <th className="py-2 text-right">Valor p/ repor</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {lowStock.map((p) => {
+                                        const shortage = Math.max(0, Number(p.min_quantity || 0) - Number(p.quantity || 0))
+                                        const repo = shortage * Number(p.cost_price || 0)
+                                        return (
+                                            <tr key={p.id} className="border-b border-neutral-800 text-gray-200">
+                                                <td className="py-2 font-medium text-white">{p.name}</td>
+                                                <td className="py-2 text-right text-red-400 font-bold">{INT(p.quantity || 0)}</td>
+                                                <td className="py-2 text-right text-gray-400">{INT(p.min_quantity || 0)}</td>
+                                                <td className="py-2 text-right text-yellow-400">{INT(shortage)}</td>
+                                                <td className="py-2 text-right text-gray-400">{BRL(p.cost_price || 0)}</td>
+                                                <td className="py-2 text-right font-semibold">{BRL(repo)}</td>
+                                            </tr>
+                                        )
+                                    })}
+                                </tbody>
+                            </table>
+                        </>
+                    )}
+                </div>
+            )}
         </div>
     )
 }
 
-function RankingTable({ rows, columns, barKey, barMax, barColor, emptyMsg }) {
+function RankingTable({ rows, columns, barKey, barMax, barColor, emptyMsg, footnote }) {
     if (!rows.length) return <p className="text-sm text-gray-500">{emptyMsg}</p>
     return (
-        <table className="w-full text-sm text-left">
-            <thead className="text-xs uppercase text-gray-400 border-b border-neutral-800">
-                <tr>
-                    <th className="py-2">#</th>
-                    {columns.map((c) => (
-                        <th key={c.key} className={`py-2 ${c.align === 'right' ? 'text-right' : ''}`}>
-                            {c.label}
-                        </th>
-                    ))}
-                    <th className="py-2 w-[20%]" />
-                </tr>
-            </thead>
-            <tbody>
-                {rows.map((r, i) => (
-                    <tr key={i} className="border-b border-neutral-800 text-gray-200">
-                        <td className="py-2 text-gray-500">{i + 1}</td>
+        <div>
+            <table className="w-full text-sm text-left">
+                <thead className="text-xs uppercase text-gray-400 border-b border-neutral-800">
+                    <tr>
+                        <th className="py-2">#</th>
                         {columns.map((c) => (
-                            <td key={c.key} className={`py-2 ${c.align === 'right' ? 'text-right' : ''}`}>
-                                {c.format ? c.format(r[c.key]) : r[c.key]}
-                            </td>
+                            <th key={c.key} className={`py-2 ${c.align === 'right' ? 'text-right' : ''}`}>
+                                {c.label}
+                            </th>
                         ))}
-                        <td className="py-2">
-                            <Bar value={r[barKey]} max={barMax} color={barColor} />
-                        </td>
+                        <th className="py-2 w-[15%]" />
                     </tr>
-                ))}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {rows.map((r, i) => (
+                        <tr key={i} className="border-b border-neutral-800 text-gray-200">
+                            <td className="py-2 text-gray-500">{i + 1}</td>
+                            {columns.map((c) => (
+                                <td key={c.key} className={`py-2 ${c.align === 'right' ? 'text-right' : ''}`}>
+                                    {c.format ? c.format(r[c.key]) : r[c.key]}
+                                </td>
+                            ))}
+                            <td className="py-2">
+                                <Bar value={r[barKey]} max={barMax} color={barColor} />
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+            {footnote && <div className="mt-2 text-xs text-gray-500 italic">{footnote}</div>}
+        </div>
     )
 }
