@@ -12,6 +12,18 @@ function defaultPeriod() {
     return { from, to }
 }
 
+function previousPeriod(from, to) {
+    // Janela anterior de mesma duração, imediatamente antes de `from`.
+    const fromDate = new Date(`${from}T00:00:00`)
+    const toDate = new Date(`${to}T00:00:00`)
+    const durationMs = toDate - fromDate
+    const prevToDate = new Date(fromDate.getTime() - 24 * 3600 * 1000)
+    const prevFromDate = new Date(prevToDate.getTime() - durationMs)
+    const pad = (n) => String(n).padStart(2, '0')
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    return { from: fmt(prevFromDate), to: fmt(prevToDate) }
+}
+
 export default async function ReportsPage({ searchParams }) {
     const sp = (await searchParams) || {}
     const { from: defFrom, to: defTo } = defaultPeriod()
@@ -21,13 +33,17 @@ export default async function ReportsPage({ searchParams }) {
     const fromISO = `${from}T00:00:00`
     const toISO = `${to}T23:59:59.999`
 
+    const { from: prevFrom, to: prevTo } = previousPeriod(from, to)
+    const prevFromISO = `${prevFrom}T00:00:00`
+    const prevToISO = `${prevTo}T23:59:59.999`
+
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
         return <div className="p-6 text-gray-300">Não autenticado.</div>
     }
 
-    const [txRes, osRes, itemsRes, closuresRes] = await Promise.all([
+    const [txRes, osRes, itemsRes, closuresRes, prevTxRes, prevOsRes, productsRes] = await Promise.all([
         supabase
             .from('transactions')
             .select('id, type, status, amount, payment_method, category, description, date')
@@ -49,8 +65,8 @@ export default async function ReportsPage({ searchParams }) {
                 type,
                 product_id,
                 service_id,
-                products ( id, name ),
-                services ( id, name ),
+                products ( id, name, cost_price ),
+                services ( id, name, cost ),
                 service_orders!inner ( id, status, created_at )
             `)
             .eq('service_orders.status', 'Concluido')
@@ -62,7 +78,28 @@ export default async function ReportsPage({ searchParams }) {
             .gte('closure_date', from)
             .lte('closure_date', to)
             .order('closure_date', { ascending: true }),
+        supabase
+            .from('transactions')
+            .select('type, amount')
+            .eq('status', 'paid')
+            .gte('date', prevFromISO)
+            .lte('date', prevToISO),
+        supabase
+            .from('service_orders')
+            .select('id, total')
+            .eq('status', 'Concluido')
+            .gte('created_at', prevFromISO)
+            .lte('created_at', prevToISO),
+        supabase
+            .from('products')
+            .select('id, name, quantity, min_quantity, cost_price, price')
+            .order('quantity', { ascending: true }),
     ])
+
+    // Estoque baixo: quantidade <= min_quantity (fallback 5 se não cadastrado).
+    const lowStock = (productsRes.data || []).filter(
+        (p) => Number(p.quantity || 0) <= Number(p.min_quantity || 5),
+    )
 
     return (
         <FinancialReports
@@ -72,6 +109,10 @@ export default async function ReportsPage({ searchParams }) {
             serviceOrders={osRes.data || []}
             items={itemsRes.data || []}
             dailyClosures={closuresRes.data || []}
+            prevTransactions={prevTxRes.data || []}
+            prevServiceOrders={prevOsRes.data || []}
+            lowStock={lowStock}
+            prevPeriod={{ from: prevFrom, to: prevTo }}
         />
     )
 }
