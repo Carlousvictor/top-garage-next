@@ -8,7 +8,7 @@ export default function Navbar() {
     const pathname = usePathname()
     const { signOut } = useAuth()
 
-    if (pathname === '/login' || pathname === '/signup' || pathname === '/') return null
+    if (pathname === '/login' || pathname === '/signup' || pathname === '/' || pathname.startsWith('/admin')) return null
 
     const isActive = (path) => {
         if (path === '/' && pathname === '/') return true

@@ -1,6 +1,7 @@
 "use client"
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/context/AuthContext'
 import {
     Wrench, Users, Package, FileText,
     CircleDollarSign, TrendingUp, AlertCircle, ShoppingCart, Activity,
@@ -9,6 +10,8 @@ import {
 
 export default function DashboardHome({ metrics }) {
     const router = useRouter()
+    const { tenant } = useAuth()
+    const tenantName = tenant?.name || 'Garaje.io'
 
     const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -84,7 +87,7 @@ export default function DashboardHome({ metrics }) {
             {/* Header Greeting */}
             <div className="flex flex-col gap-2">
                 <h1 className="text-4xl font-black text-white tracking-tight">
-                    Bem-vindo, Top Garage
+                    Bem-vindo, {tenantName}
                 </h1>
                 <p className="text-gray-400 text-lg">
                     Selecione um módulo abaixo para começar a trabalhar.

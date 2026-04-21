@@ -19,6 +19,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
+        ean: '',
         description: '',
         cost_price: '',
         selling_price: '',
@@ -54,6 +55,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         setCurrentProduct({
             name: '',
             sku: '',
+            ean: '',
             description: '',
             cost_price: '',
             selling_price: '',
@@ -141,6 +143,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 tenant_id: tenantId,
                 name: currentProduct.name,
                 sku: currentProduct.sku,
+                ean: currentProduct.ean ? String(currentProduct.ean).trim() || null : null,
                 description: currentProduct.description,
                 cost_price: parseCurrency(currentProduct.cost_price),
                 selling_price: parseCurrency(currentProduct.selling_price),
@@ -332,6 +335,18 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 onChange={e => setCurrentProduct({ ...currentProduct, sku: e.target.value })}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">EAN / Código de Barras</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="13 dígitos — opcional"
+                                value={currentProduct.ean || ''}
+                                onChange={e => setCurrentProduct({ ...currentProduct, ean: e.target.value.replace(/\D/g, '') })}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5 font-mono"
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Preenche automático quando o produto vier por XML.</p>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Qtd Atual em Estoque</label>
