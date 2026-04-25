@@ -3,16 +3,35 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Search, X } from 'lucide-react'
 
 export default function ServiceOrderList({ initialOrders }) {
     const supabase = createClient()
     const router = useRouter()
     const [orders, setOrders] = useState(initialOrders || [])
     const [filterStatus, setFilterStatus] = useState('Todos')
+    // Busca livre: casa em placa, nome do cliente, número da OS ou modelo do veículo.
+    // Útil pra puxar histórico de manutenção de um veículo/cliente específico.
+    const [searchText, setSearchText] = useState('')
 
-    const filteredOrders = filterStatus === 'Todos'
-        ? orders
-        : orders.filter(order => order.status === filterStatus)
+    const normalize = (v) => String(v ?? '').toLowerCase().trim()
+
+    const filteredOrders = (() => {
+        let list = orders
+        if (filterStatus !== 'Todos') {
+            list = list.filter(o => o.status === filterStatus)
+        }
+        const q = normalize(searchText)
+        if (q) {
+            list = list.filter(o =>
+                normalize(o.vehicle_plate).includes(q) ||
+                normalize(o.clients?.name).includes(q) ||
+                normalize(o.id).includes(q) ||
+                normalize(o.vehicle_model).includes(q)
+            )
+        }
+        return list
+    })()
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -36,7 +55,28 @@ export default function ServiceOrderList({ initialOrders }) {
                 </Link>
             </div>
 
-            <div className="mb-6 flex gap-2 overflow-x-auto pb-2">
+            <div className="mb-4 relative">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Buscar por placa, cliente, nº da OS ou modelo..."
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg pl-9 pr-9 py-2.5 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                />
+                {searchText && (
+                    <button
+                        type="button"
+                        onClick={() => setSearchText('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
+                        title="Limpar busca"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
+
+            <div className="mb-6 flex gap-2 overflow-x-auto pb-2 items-center">
                 {['Todos', 'Aberto', 'Em Andamento', 'Concluido', 'Cancelado'].map(status => (
                     <button
                         key={status}
@@ -49,11 +89,27 @@ export default function ServiceOrderList({ initialOrders }) {
                         {status}
                     </button>
                 ))}
+                {(searchText || filterStatus !== 'Todos') && (
+                    <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">
+                        {filteredOrders.length} de {orders.length}
+                    </span>
+                )}
             </div>
 
             {orders.length === 0 ? (
                 <div className="text-center py-10 text-gray-500 border border-dashed border-neutral-800 rounded-lg">
                     Nenhuma ordem de serviço encontrada.
+                </div>
+            ) : filteredOrders.length === 0 ? (
+                <div className="text-center py-10 text-gray-500 border border-dashed border-neutral-800 rounded-lg">
+                    Nenhuma OS para os filtros aplicados.
+                    <button
+                        type="button"
+                        onClick={() => { setSearchText(''); setFilterStatus('Todos') }}
+                        className="block mx-auto mt-2 text-xs text-red-400 hover:text-red-300 underline"
+                    >
+                        Limpar filtros
+                    </button>
                 </div>
             ) : (
                 <div className="overflow-x-auto">
