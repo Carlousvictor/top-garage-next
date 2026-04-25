@@ -65,6 +65,20 @@ export default function ServiceOrderForm({ order }) {
     const [nextRevisionKm, setNextRevisionKm] = useState(order?.next_revision_km?.toString() || '')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro') // New state
     const [items, setItems] = useState([]) // Will fetch later if edit
+    // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
+    // importar histórico do sistema antigo. Salva em service_orders.created_at
+    // e também é usada como data da transação financeira ao finalizar.
+    const todayLocalISO = (() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })()
+    const [serviceDate, setServiceDate] = useState(() => {
+        if (!order?.created_at) return todayLocalISO
+        // Converte pra data local (não UTC) — evita off-by-one quando o
+        // timestamp foi gravado de madrugada UTC e o BRT está num dia diferente.
+        const d = new Date(order.created_at)
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })
 
     const [clients, setClients] = useState([])
     const [clientVehicles, setClientVehicles] = useState([])
@@ -240,6 +254,14 @@ export default function ServiceOrderForm({ order }) {
         try {
             const total = calculateTotal()
 
+            // Data da OS em ISO timestamp (meio-dia local pra evitar TZ shift).
+            // Vai pro created_at em insert e em update — assim editar a data
+            // de uma OS retroativa também atualiza a posição na listagem.
+            const serviceDateISO = (() => {
+                const [y, m, d] = serviceDate.split('-').map(Number)
+                return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+            })()
+
             // 1. Upsert Order
             const orderData = {
                 tenant_id: companyId,
@@ -253,7 +275,8 @@ export default function ServiceOrderForm({ order }) {
                 next_revision_date: nextRevisionDate || null,
                 current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
                 next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
-                total
+                total,
+                created_at: serviceDateISO
             }
 
             let orderId = order?.id
@@ -334,6 +357,13 @@ export default function ServiceOrderForm({ order }) {
                 }
             }
 
+            // Data da transação = data da OS. Em OS retroativa cai no mês
+            // correto dos relatórios; em OS de hoje, é equivalente a now().
+            const txDate = (() => {
+                const [y, m, d] = serviceDate.split('-').map(Number)
+                return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+            })()
+
             await supabase.from('transactions').insert([{
                 tenant_id: companyId,
                 description: `Receita OS #${order.id} - Placa ${plate}`,
@@ -343,7 +373,7 @@ export default function ServiceOrderForm({ order }) {
                 related_os_id: order.id,
                 status: 'paid',
                 payment_method: paymentMethod,
-                date: new Date().toISOString()
+                date: txDate
             }])
 
             alert('OS Finalizada com sucesso!')
@@ -539,6 +569,27 @@ export default function ServiceOrderForm({ order }) {
                                 <option value="Concluido">Concluído</option>
                                 <option value="Cancelado">Cancelado</option>
                             </select>
+                        </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Data da OS
+                            </label>
+                            <input
+                                type="date"
+                                value={serviceDate}
+                                max={todayLocalISO}
+                                onChange={(e) => setServiceDate(e.target.value)}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-72 p-2.5"
+                            />
+                            {serviceDate !== todayLocalISO && (
+                                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                    OS retroativa — será gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>. Ao finalizar, a transação financeira também usa essa data.
+                                </p>
+                            )}
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Use uma data passada para importar histórico do sistema antigo. Default = hoje.
+                            </p>
                         </div>
                     </div>
 
