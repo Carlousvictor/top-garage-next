@@ -166,7 +166,7 @@ export default function DashboardHome({ metrics }) {
                     </div>
                 </div>
 
-                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-red-500/50 transition cursor-pointer" onClick={() => router.push('/stock')}>
+                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-red-500/50 transition cursor-pointer" onClick={() => router.push('/stock?filter=low-stock')}>
                     <div>
                         <p className="text-gray-400 text-sm font-medium mb-1">Itens c/ Estoque Baixo</p>
                         <h3 className={`text-2xl font-black ${metrics.lowStock > 0 ? 'text-red-500' : 'text-white'}`}>

@@ -5,13 +5,14 @@ import { useAuth } from '../context/AuthContext'
 import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { FileText } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { FileText, AlertCircle, X as XIcon } from 'lucide-react'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
     const supabase = createClient()
     const { tenantId } = useAuth()
     const router = useRouter()
+    const searchParams = useSearchParams()
 
     const [products, setProducts] = useState(initialProducts || [])
     const [suppliers, setSuppliers] = useState(initialSuppliers || [])
@@ -20,6 +21,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Produto selecionado na busca. Quando preenchido, a tabela mostra esse produto
     // mais todos os equivalentes (linked_products). Quando null, mostra tudo.
     const [searchProduct, setSearchProduct] = useState(null)
+    // Filtro "estoque baixo": ativado via toggle ou via ?filter=low-stock (vindo do dashboard).
+    // Mesmo critério usado em app/page.js: quantity <= (min_quantity || 0).
+    const [lowStockOnly, setLowStockOnly] = useState(searchParams.get('filter') === 'low-stock')
     const [isEditing, setIsEditing] = useState(false)
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
@@ -222,25 +226,36 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         window.location.reload()
     }
 
+    // Predicado de "estoque baixo" — mesmo critério que o dashboard usa.
+    const isLowStock = (p) => Number(p.quantity || 0) <= Number(p.min_quantity || 0)
+
     // Quando o operador seleciona um produto na busca, a tabela mostra:
     //   1. O produto selecionado
     //   2. Equivalentes diretos (produtos listados em searchProduct.linked_products)
     //   3. Equivalentes inversos (produtos cujo linked_products contém o searchProduct.id)
     // Sem seleção, mostra a lista completa.
+    // O filtro "estoque baixo" é aplicado por cima dessa lista (composto, não exclusivo).
     const filteredProducts = (() => {
-        if (!searchProduct) return products
-        const baseId = searchProduct.value
-        const base = products.find(p => p.id === baseId)
-        if (!base) return []
-        const equivIds = new Set(Array.isArray(base.linked_products) ? base.linked_products : [])
-        // Relação inversa: outros produtos que apontam pro base
-        for (const p of products) {
-            if (Array.isArray(p.linked_products) && p.linked_products.includes(baseId)) {
-                equivIds.add(p.id)
+        let base = products
+        if (searchProduct) {
+            const baseId = searchProduct.value
+            const baseProduct = products.find(p => p.id === baseId)
+            if (!baseProduct) return []
+            const equivIds = new Set(Array.isArray(baseProduct.linked_products) ? baseProduct.linked_products : [])
+            for (const p of products) {
+                if (Array.isArray(p.linked_products) && p.linked_products.includes(baseId)) {
+                    equivIds.add(p.id)
+                }
             }
+            base = products.filter(p => p.id === baseId || equivIds.has(p.id))
         }
-        return products.filter(p => p.id === baseId || equivIds.has(p.id))
+        if (lowStockOnly) base = base.filter(isLowStock)
+        return base
     })()
+
+    // Contagem de itens com estoque baixo (sempre baseada na lista completa, sem filtros).
+    // Usada pra mostrar o badge no toggle.
+    const lowStockCount = products.filter(isLowStock).length
 
     // Set com IDs equivalentes — usado pra marcar visualmente as linhas na tabela
     const equivalentIds = (() => {
@@ -377,6 +392,23 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             styles={customStyles}
                         />
                     </div>
+                    <button
+                        type="button"
+                        onClick={() => setLowStockOnly(prev => !prev)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border flex items-center gap-2 ${lowStockOnly
+                            ? 'bg-red-500/15 hover:bg-red-500/25 border-red-500/40 text-red-300'
+                            : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-white'
+                            }`}
+                        title="Mostrar apenas produtos com estoque <= mínimo"
+                    >
+                        <AlertCircle className="w-4 h-4" />
+                        Estoque baixo
+                        {lowStockCount > 0 && (
+                            <span className={`ml-1 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-bold ${lowStockOnly ? 'bg-red-500 text-white' : 'bg-red-500/20 text-red-300'}`}>
+                                {lowStockCount}
+                            </span>
+                        )}
+                    </button>
                     <Link
                         href="/import"
                         className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border border-neutral-700 flex items-center gap-2"
@@ -396,6 +428,23 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             {/* List */}
             {!isEditing ? (
                 <div className="overflow-x-auto">
+                    {lowStockOnly && (
+                        <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-sm">
+                                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                                <span className="text-red-300">
+                                    Mostrando apenas itens com <strong>estoque ≤ mínimo</strong> ({lowStockCount} encontrado{lowStockCount === 1 ? '' : 's'})
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setLowStockOnly(false)}
+                                className="flex items-center gap-1 text-xs text-red-300 hover:text-red-200 transition"
+                            >
+                                <XIcon className="w-3 h-3" /> Limpar filtro
+                            </button>
+                        </div>
+                    )}
                     <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs text-gray-200 uppercase bg-black">
                             <tr>
@@ -410,7 +459,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         </thead>
                         <tbody>
                             {filteredProducts.length === 0 ? (
-                                <tr><td colSpan="7" className="text-center py-4">Nenhum produto encontrado.</td></tr>
+                                <tr><td colSpan="7" className="text-center py-4">
+                                    {lowStockOnly
+                                        ? 'Nenhum produto com estoque baixo.'
+                                        : 'Nenhum produto encontrado.'}
+                                </td></tr>
                             ) : (
                                 filteredProducts.map((product) => (
                                     <tr key={product.id} className={`border-b border-neutral-800 hover:bg-neutral-800 ${equivalentIds.has(product.id) ? 'bg-blue-500/5' : ''}`}>

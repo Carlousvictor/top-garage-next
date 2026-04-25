@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/utils/supabase/server'
 import ProductList from '@/components/ProductList'
 
@@ -29,10 +30,16 @@ export default async function StockPage() {
         .select('*')
         .order('name')
 
-    return <ProductList
-        initialProducts={products || []}
-        initialSuppliers={suppliers || []}
-        initialCategories={categories || []}
-        initialBrands={brands || []}
-    />
+    // Suspense necessário porque ProductList chama useSearchParams (next/navigation)
+    // — sem o boundary, o build estoura em rotas que dependem de query params.
+    return (
+        <Suspense fallback={<div className="p-8 text-center text-gray-400 animate-pulse">Carregando estoque...</div>}>
+            <ProductList
+                initialProducts={products || []}
+                initialSuppliers={suppliers || []}
+                initialCategories={categories || []}
+                initialBrands={brands || []}
+            />
+        </Suspense>
+    )
 }
