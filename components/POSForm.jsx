@@ -293,6 +293,17 @@ export default function POSForm() {
                             onInputChange={(input, action) => {
                                 if (action.action === 'input-change') setClientInputText(input)
                             }}
+                            onBlur={() => {
+                                // Quando o operador digita e sai do campo sem clicar em "Usar"
+                                // ou apertar Enter, o react-select limpa o input visual.
+                                // Aqui auto-commitamos o texto como opção criada — assim o
+                                // nome digitado vira um "chip" visível no campo.
+                                const typed = clientInputText.trim()
+                                if (typed && !selectedClient) {
+                                    setSelectedClient({ value: typed, label: typed, __isNew__: true })
+                                    setClientInputText('')
+                                }
+                            }}
                             styles={selectStyles}
                         />
                         <p className="text-[11px] text-gray-500 mt-1">
