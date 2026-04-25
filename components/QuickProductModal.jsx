@@ -1,0 +1,252 @@
+"use client"
+import { useState, useEffect } from 'react'
+import { createClient } from '../utils/supabase/client'
+import { useAuth } from '../context/AuthContext'
+import { Package, X } from 'lucide-react'
+
+// Cadastro rápido de produto a partir da OS. Salva em products (com tenant_id)
+// e devolve o registro pro pai via onCreated. Mantém o form enxuto: nome + venda
+// são obrigatórios; custo, margem e SKU são opcionais. Categoria/marca/fornecedor
+// ficam pra edição completa em /stock — aqui é só atalho.
+export default function QuickProductModal({ isOpen, onClose, onCreated, initialName = '' }) {
+    const supabase = createClient()
+    const { tenantId } = useAuth()
+
+    const [name, setName] = useState(initialName)
+    const [sku, setSku] = useState('')
+    const [costPrice, setCostPrice] = useState('')
+    const [margin, setMargin] = useState('')
+    const [sellingPrice, setSellingPrice] = useState('')
+    const [quantity, setQuantity] = useState('0')
+    const [minQuantity, setMinQuantity] = useState('0')
+
+    const [saving, setSaving] = useState(false)
+    const [errorMsg, setErrorMsg] = useState('')
+
+    // Sempre que o modal abrir com um initialName novo, sincroniza o campo name.
+    useEffect(() => {
+        if (isOpen) {
+            setName(initialName)
+            setErrorMsg('')
+        }
+    }, [isOpen, initialName])
+
+    // Máscara de moeda BR — mesmo padrão usado em ProductList/DailyMovement.
+    const formatInputCurrency = (value) => {
+        if (!value) return ''
+        const numericValue = value.toString().replace(/\D/g, '')
+        const floatValue = parseFloat(numericValue) / 100
+        return floatValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    }
+
+    const parseCurrency = (value) => {
+        if (!value) return 0
+        if (typeof value === 'number') return value
+        const numericValue = value.toString().replace(/\D/g, '')
+        return parseFloat(numericValue) / 100
+    }
+
+    // Auto-calc do preço de venda quando o operador digita custo + margem.
+    const calcSelling = (cost, marginPct) => {
+        const c = parseCurrency(cost)
+        const m = parseFloat(marginPct)
+        if (!c || isNaN(m)) return ''
+        return formatInputCurrency(String(Math.round(c * (1 + m / 100) * 100)))
+    }
+
+    const handleCostChange = (val) => {
+        const newCost = formatInputCurrency(val)
+        setCostPrice(newCost)
+        const newSelling = calcSelling(newCost, margin)
+        if (newSelling) setSellingPrice(newSelling)
+    }
+
+    const handleMarginChange = (val) => {
+        setMargin(val)
+        const newSelling = calcSelling(costPrice, val)
+        if (newSelling) setSellingPrice(newSelling)
+    }
+
+    const handleSubmit = async (e) => {
+        e.preventDefault()
+        setErrorMsg('')
+
+        if (!name.trim()) {
+            setErrorMsg('Informe o nome do produto.')
+            return
+        }
+        const sellingNum = parseCurrency(sellingPrice)
+        if (sellingNum <= 0) {
+            setErrorMsg('Informe um preço de venda válido.')
+            return
+        }
+        if (!tenantId) {
+            setErrorMsg('Tenant não identificado. Faça login novamente.')
+            return
+        }
+
+        setSaving(true)
+        const { data, error } = await supabase
+            .from('products')
+            .insert([{
+                tenant_id: tenantId,
+                name: name.trim(),
+                sku: sku.trim() || null,
+                cost_price: parseCurrency(costPrice) || 0,
+                selling_price: sellingNum,
+                profit_margin_percent: parseFloat(margin) || 0,
+                quantity: parseInt(quantity) || 0,
+                min_quantity: parseInt(minQuantity) || 0
+            }])
+            .select()
+            .single()
+
+        setSaving(false)
+
+        if (error) {
+            setErrorMsg('Erro ao salvar produto: ' + error.message)
+            return
+        }
+
+        onCreated(data)
+        // Reset pra próximo uso
+        setName('')
+        setSku('')
+        setCostPrice('')
+        setMargin('')
+        setSellingPrice('')
+        setQuantity('0')
+        setMinQuantity('0')
+    }
+
+    if (!isOpen) return null
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-neutral-900 border border-neutral-800 w-full max-w-xl rounded-2xl shadow-2xl overflow-hidden my-8">
+                <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Package className="w-5 h-5 text-red-500" />
+                        Cadastro rápido de produto
+                    </h2>
+                    <button onClick={onClose} className="text-gray-400 hover:text-white transition" aria-label="Fechar">
+                        <X className="w-5 h-5" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">
+                            Nome <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            autoFocus
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                            placeholder="Ex: Pastilha de freio dianteira"
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">SKU / Código</label>
+                            <input
+                                type="text"
+                                value={sku}
+                                onChange={(e) => setSku(e.target.value)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                                placeholder="Opcional"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Custo (R$)</label>
+                            <input
+                                type="text"
+                                value={costPrice}
+                                onChange={(e) => handleCostChange(e.target.value)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                                placeholder="R$ 0,00"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Margem (%)</label>
+                            <input
+                                type="number"
+                                step="0.1"
+                                value={margin}
+                                onChange={(e) => handleMarginChange(e.target.value)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                                placeholder="Ex: 50"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">
+                                Venda (R$) <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={sellingPrice}
+                                onChange={(e) => setSellingPrice(formatInputCurrency(e.target.value))}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                                placeholder="R$ 0,00"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Estoque inicial</label>
+                            <input
+                                type="number"
+                                value={quantity}
+                                onChange={(e) => setQuantity(e.target.value)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Estoque mínimo</label>
+                            <input
+                                type="number"
+                                value={minQuantity}
+                                onChange={(e) => setMinQuantity(e.target.value)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                            />
+                        </div>
+                    </div>
+
+                    <p className="text-[11px] text-gray-500">
+                        Categoria, marca e fornecedor podem ser configurados depois em <strong>Estoque</strong>.
+                    </p>
+
+                    {errorMsg && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
+                            {errorMsg}
+                        </div>
+                    )}
+
+                    <div className="flex gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex-1 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg font-medium transition"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={saving}
+                            className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-lg shadow-red-900/20 transition"
+                        >
+                            {saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    )
+}

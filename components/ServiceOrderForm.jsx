@@ -6,7 +6,9 @@ import { useAuth } from '../context/AuthContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 import CreatableSelect from 'react-select/creatable'
 import QuickClientModal from './QuickClientModal'
-import { UserPlus, Car, X as XIcon } from 'lucide-react'
+import QuickProductModal from './QuickProductModal'
+import QuickServiceModal from './QuickServiceModal'
+import { UserPlus, Car, X as XIcon, Plus } from 'lucide-react'
 
 // Dark theme for react-select, alinhado ao resto do app (neutral-800/700 + vermelho).
 const selectStyles = {
@@ -71,6 +73,14 @@ export default function ServiceOrderForm({ order }) {
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedService, setSelectedService] = useState('')
     const [isClientModalOpen, setIsClientModalOpen] = useState(false)
+    // Cadastro rápido inline: o que o operador digitou no select é usado como
+    // initialName do modal pra evitar redigitação.
+    const [isProductModalOpen, setIsProductModalOpen] = useState(false)
+    const [productModalInitialName, setProductModalInitialName] = useState('')
+    const [productSearchInput, setProductSearchInput] = useState('')
+    const [isServiceModalOpen, setIsServiceModalOpen] = useState(false)
+    const [serviceModalInitialName, setServiceModalInitialName] = useState('')
+    const [serviceSearchInput, setServiceSearchInput] = useState('')
     // Veículo "ativo" — preenchido pelo auto-fill (1 veículo) ou pelo picker (2+).
     // Permite renderizar a card readonly com info completa (combustível, cilindrada, etc).
     const [selectedVehicle, setSelectedVehicle] = useState(null)
@@ -173,6 +183,36 @@ export default function ServiceOrderForm({ order }) {
             unit_price: 0,
             custom: true
         }])
+    }
+
+    // Pós-cadastro do modal: anexa o produto ao catálogo local e já adiciona como item da OS.
+    // Usa a mesma forma que handleAddItem('product') — mantém comportamento consistente.
+    const handleProductCreated = (product) => {
+        setProducts(prev => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)))
+        setItems(prev => [...prev, {
+            type: 'product',
+            product_id: product.id,
+            description: product.name,
+            quantity: 1,
+            cost_price: product.cost_price,
+            profit_margin: product.profit_margin_percent || 0,
+            unit_price: product.selling_price || 0
+        }])
+        setIsProductModalOpen(false)
+        setProductSearchInput('')
+    }
+
+    const handleServiceCreated = (service) => {
+        setServices(prev => [...prev, service].sort((a, b) => a.name.localeCompare(b.name)))
+        setItems(prev => [...prev, {
+            type: 'service',
+            service_id: service.id,
+            description: service.name,
+            quantity: 1,
+            unit_price: service.price || 0
+        }])
+        setIsServiceModalOpen(false)
+        setServiceSearchInput('')
     }
 
     const handleRemoveItem = (index) => {
@@ -533,7 +573,12 @@ export default function ServiceOrderForm({ order }) {
 
                     {/* Items Selection */}
                     <div>
-                        <h3 className="text-lg font-medium text-gray-200 mb-3">Itens da OS</h3>
+                        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                            <h3 className="text-lg font-medium text-gray-200">Itens da OS</h3>
+                            <p className="text-[11px] text-gray-500">
+                                Não achou? Use <strong className="text-gray-300">+ Novo</strong> para cadastrar no catálogo, ou tecle Enter para adicionar como item avulso.
+                            </p>
+                        </div>
 
                         <div className="flex gap-2 mb-4">
                             <div className="flex-1">
@@ -555,6 +600,9 @@ export default function ServiceOrderForm({ order }) {
                                         label: `${p.name} - R$ ${p.selling_price}`
                                     }))}
                                     onChange={(opt) => setSelectedProduct(opt ? String(opt.value) : '')}
+                                    onInputChange={(input, action) => {
+                                        if (action.action === 'input-change') setProductSearchInput(input)
+                                    }}
                                     onCreateOption={(input) => {
                                         handleAddCustomItem('product', input)
                                         setSelectedProduct('')
@@ -568,6 +616,17 @@ export default function ServiceOrderForm({ order }) {
                                 className="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-lg"
                             >
                                 + Prod
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setProductModalInitialName(productSearchInput)
+                                    setIsProductModalOpen(true)
+                                }}
+                                className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
+                                title="Cadastrar novo produto no catálogo e adicionar à OS"
+                            >
+                                <Plus className="w-4 h-4" /> Novo
                             </button>
                         </div>
 
@@ -591,6 +650,9 @@ export default function ServiceOrderForm({ order }) {
                                         label: `${s.name} - R$ ${s.price}`
                                     }))}
                                     onChange={(opt) => setSelectedService(opt ? String(opt.value) : '')}
+                                    onInputChange={(input, action) => {
+                                        if (action.action === 'input-change') setServiceSearchInput(input)
+                                    }}
                                     onCreateOption={(input) => {
                                         handleAddCustomItem('service', input)
                                         setSelectedService('')
@@ -604,6 +666,17 @@ export default function ServiceOrderForm({ order }) {
                                 className="bg-neutral-700 hover:bg-neutral-600 text-white px-3 py-2 rounded-lg"
                             >
                                 + Serv
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setServiceModalInitialName(serviceSearchInput)
+                                    setIsServiceModalOpen(true)
+                                }}
+                                className="flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
+                                title="Cadastrar novo serviço no catálogo e adicionar à OS"
+                            >
+                                <Plus className="w-4 h-4" /> Novo
                             </button>
                         </div>
 
@@ -774,6 +847,20 @@ export default function ServiceOrderForm({ order }) {
                     setClientId(String(newClient.id))
                     setIsClientModalOpen(false)
                 }}
+            />
+
+            <QuickProductModal
+                isOpen={isProductModalOpen}
+                onClose={() => setIsProductModalOpen(false)}
+                onCreated={handleProductCreated}
+                initialName={productModalInitialName}
+            />
+
+            <QuickServiceModal
+                isOpen={isServiceModalOpen}
+                onClose={() => setIsServiceModalOpen(false)}
+                onCreated={handleServiceCreated}
+                initialName={serviceModalInitialName}
             />
         </>
 
