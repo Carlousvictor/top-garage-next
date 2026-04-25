@@ -2,7 +2,31 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
+import CreatableSelect from 'react-select/creatable'
 import { Package, X } from 'lucide-react'
+
+// Tema escuro do react-select alinhado com o resto do app
+const selectStyles = {
+    control: (base, state) => ({
+        ...base,
+        backgroundColor: '#000000',
+        borderColor: state.isFocused ? '#ef4444' : '#404040',
+        color: '#ffffff',
+        minHeight: '42px',
+        boxShadow: 'none',
+        '&:hover': { borderColor: '#ef4444' }
+    }),
+    menu: (base) => ({ ...base, backgroundColor: '#171717', border: '1px solid #404040', zIndex: 70 }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? '#262626' : 'transparent',
+        color: '#ffffff',
+        cursor: 'pointer'
+    }),
+    singleValue: (base) => ({ ...base, color: '#ffffff' }),
+    input: (base) => ({ ...base, color: '#ffffff' }),
+    placeholder: (base) => ({ ...base, color: '#9ca3af' })
+}
 
 // Cadastro rápido de produto a partir da OS. Salva em products (com tenant_id)
 // e devolve o registro pro pai via onCreated. Mantém o form enxuto: nome + venda
@@ -19,6 +43,12 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
     const [sellingPrice, setSellingPrice] = useState('')
     const [quantity, setQuantity] = useState('0')
     const [minQuantity, setMinQuantity] = useState('0')
+    const [categoryId, setCategoryId] = useState('')
+    const [brandId, setBrandId] = useState('')
+
+    const [categories, setCategories] = useState([])
+    const [brands, setBrands] = useState([])
+    const [catalogLoaded, setCatalogLoaded] = useState(false)
 
     const [saving, setSaving] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
@@ -30,6 +60,54 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('')
         }
     }, [isOpen, initialName])
+
+    // Lazy load: só busca categorias/marcas quando o modal abre pela 1ª vez na sessão.
+    useEffect(() => {
+        if (!isOpen || catalogLoaded || !tenantId) return
+        const load = async () => {
+            const [{ data: cats }, { data: brs }] = await Promise.all([
+                supabase.from('categories').select('*').order('name'),
+                supabase.from('brands').select('*').order('name')
+            ])
+            setCategories(cats || [])
+            setBrands(brs || [])
+            setCatalogLoaded(true)
+        }
+        load()
+    }, [isOpen, catalogLoaded, tenantId])
+
+    // Cria categoria sob demanda — mesmo padrão de ProductList.handleCreateCategory.
+    const handleCreateCategory = async (input) => {
+        const newName = input.trim()
+        if (!newName || !tenantId) return
+        const { data, error } = await supabase
+            .from('categories')
+            .insert([{ tenant_id: tenantId, name: newName }])
+            .select()
+            .single()
+        if (error) {
+            setErrorMsg('Erro ao criar categoria: ' + error.message)
+            return
+        }
+        setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setCategoryId(data.id)
+    }
+
+    const handleCreateBrand = async (input) => {
+        const newName = input.trim()
+        if (!newName || !tenantId) return
+        const { data, error } = await supabase
+            .from('brands')
+            .insert([{ tenant_id: tenantId, name: newName }])
+            .select()
+            .single()
+        if (error) {
+            setErrorMsg('Erro ao criar marca: ' + error.message)
+            return
+        }
+        setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setBrandId(data.id)
+    }
 
     // Máscara de moeda BR — mesmo padrão usado em ProductList/DailyMovement.
     const formatInputCurrency = (value) => {
@@ -96,7 +174,9 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                 selling_price: sellingNum,
                 profit_margin_percent: parseFloat(margin) || 0,
                 quantity: parseInt(quantity) || 0,
-                min_quantity: parseInt(minQuantity) || 0
+                min_quantity: parseInt(minQuantity) || 0,
+                category_id: categoryId || null,
+                brand_id: brandId || null
             }])
             .select()
             .single()
@@ -117,6 +197,8 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         setSellingPrice('')
         setQuantity('0')
         setMinQuantity('0')
+        setCategoryId('')
+        setBrandId('')
     }
 
     if (!isOpen) return null
@@ -219,8 +301,55 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                         </div>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Categoria</label>
+                            <CreatableSelect
+                                instanceId="quick-product-category"
+                                isClearable
+                                placeholder="Selecione ou digite para criar..."
+                                formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
+                                noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
+                                options={categories.map(c => ({ value: c.id, label: c.name }))}
+                                value={
+                                    categoryId
+                                        ? (() => {
+                                            const c = categories.find(c => c.id === categoryId)
+                                            return c ? { value: c.id, label: c.name } : null
+                                        })()
+                                        : null
+                                }
+                                onChange={(opt) => setCategoryId(opt ? opt.value : '')}
+                                onCreateOption={handleCreateCategory}
+                                styles={selectStyles}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Marca</label>
+                            <CreatableSelect
+                                instanceId="quick-product-brand"
+                                isClearable
+                                placeholder="Selecione ou digite para criar..."
+                                formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
+                                noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
+                                options={brands.map(b => ({ value: b.id, label: b.name }))}
+                                value={
+                                    brandId
+                                        ? (() => {
+                                            const b = brands.find(b => b.id === brandId)
+                                            return b ? { value: b.id, label: b.name } : null
+                                        })()
+                                        : null
+                                }
+                                onChange={(opt) => setBrandId(opt ? opt.value : '')}
+                                onCreateOption={handleCreateBrand}
+                                styles={selectStyles}
+                            />
+                        </div>
+                    </div>
+
                     <p className="text-[11px] text-gray-500">
-                        Categoria, marca e fornecedor podem ser configurados depois em <strong>Estoque</strong>.
+                        Fornecedor pode ser configurado depois em <strong>Estoque</strong>.
                     </p>
 
                     {errorMsg && (
