@@ -1,7 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
+import { Activity, BarChart3, ArrowRight } from 'lucide-react'
 
 export default function FinancialDashboard({ initialTransactions, initialSummary }) {
     const supabase = createClient()
@@ -210,6 +212,41 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                         Caixa Diário
                     </button>
                 </div>
+            </div>
+
+            {/* Atalhos para sub-páginas do Financeiro — antes ficavam no Navbar global */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Link
+                    href="/financial/daily"
+                    className="group bg-neutral-900 border border-neutral-800 hover:border-emerald-500/50 rounded-xl p-5 flex items-center justify-between transition"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-emerald-500/10 rounded-lg group-hover:scale-110 transition">
+                            <Activity className="w-6 h-6 text-emerald-400" />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-bold">Movimento Diário</h3>
+                            <p className="text-sm text-gray-400">Abertura, fechamento de caixa e despesas do dia</p>
+                        </div>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-emerald-400 transition" />
+                </Link>
+
+                <Link
+                    href="/financial/reports"
+                    className="group bg-neutral-900 border border-neutral-800 hover:border-blue-500/50 rounded-xl p-5 flex items-center justify-between transition"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-500/10 rounded-lg group-hover:scale-110 transition">
+                            <BarChart3 className="w-6 h-6 text-blue-400" />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-bold">Relatórios</h3>
+                            <p className="text-sm text-gray-400">Análises consolidadas e indicadores do período</p>
+                        </div>
+                    </div>
+                    <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-blue-400 transition" />
+                </Link>
             </div>
 
             {/* Summary Cards */}

@@ -2,22 +2,21 @@
 
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { useAuth } from '../context/AuthContext'
 
 export default function Navbar() {
     const pathname = usePathname()
-    const { signOut } = useAuth()
 
     if (pathname === '/login' || pathname === '/signup' || pathname === '/' || pathname.startsWith('/admin')) return null
 
     const isActive = (path) => {
         if (path === '/' && pathname === '/') return true
-        // Prevent generic '/financial' from lighting up when we are inside '/financial/daily'
-        if (path === '/financial' && pathname !== '/financial') return false
+        // Sub-páginas de Financeiro (daily, reports) acendem o item "Financeiro".
         if (path !== '/' && pathname.startsWith(path)) return true
         return false
     }
 
+    // Apenas módulos de topo. Sub-páginas (Movimento Diário, Relatórios, Importação XML)
+    // ficam dentro de seus respectivos módulos pais — Financeiro e Estoque.
     const navItems = [
         { name: 'Início', path: '/' },
         { name: 'Ordens de Serviço', path: '/os' },
@@ -27,10 +26,7 @@ export default function Navbar() {
         { name: 'Clientes', path: '/clients' },
         { name: 'Estoque', path: '/stock' },
         { name: 'Serviços', path: '/services' },
-        { name: 'Importação XML', path: '/import' },
         { name: 'Financeiro', path: '/financial' },
-        { name: 'Movimento Diário', path: '/financial/daily' },
-        { name: 'Relatórios', path: '/financial/reports' },
     ]
 
     return (
@@ -47,12 +43,6 @@ export default function Navbar() {
                     {item.name}
                 </Link>
             ))}
-            <button
-                onClick={signOut}
-                className="px-3 py-1.5 rounded-md text-sm font-medium transition-all whitespace-nowrap text-red-500 hover:text-white hover:bg-red-900/50 flex-shrink-0"
-            >
-                Sair
-            </button>
         </nav>
     )
 }

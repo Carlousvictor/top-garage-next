@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import Select from 'react-select'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { FileText } from 'lucide-react'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
     const supabase = createClient()
@@ -14,7 +16,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [suppliers, setSuppliers] = useState(initialSuppliers || [])
     const [categories, setCategories] = useState(initialCategories || [])
     const [brands, setBrands] = useState(initialBrands || [])
-    const [searchTerm, setSearchTerm] = useState('')
+    // Produto selecionado na busca. Quando preenchido, a tabela mostra esse produto
+    // mais todos os equivalentes (linked_products). Quando null, mostra tudo.
+    const [searchProduct, setSearchProduct] = useState(null)
     const [isEditing, setIsEditing] = useState(false)
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
@@ -182,10 +186,63 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         window.location.reload()
     }
 
-    const filteredProducts = products.filter(p =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
+    // Quando o operador seleciona um produto na busca, a tabela mostra:
+    //   1. O produto selecionado
+    //   2. Equivalentes diretos (produtos listados em searchProduct.linked_products)
+    //   3. Equivalentes inversos (produtos cujo linked_products contém o searchProduct.id)
+    // Sem seleção, mostra a lista completa.
+    const filteredProducts = (() => {
+        if (!searchProduct) return products
+        const baseId = searchProduct.value
+        const base = products.find(p => p.id === baseId)
+        if (!base) return []
+        const equivIds = new Set(Array.isArray(base.linked_products) ? base.linked_products : [])
+        // Relação inversa: outros produtos que apontam pro base
+        for (const p of products) {
+            if (Array.isArray(p.linked_products) && p.linked_products.includes(baseId)) {
+                equivIds.add(p.id)
+            }
+        }
+        return products.filter(p => p.id === baseId || equivIds.has(p.id))
+    })()
+
+    // Set com IDs equivalentes — usado pra marcar visualmente as linhas na tabela
+    const equivalentIds = (() => {
+        if (!searchProduct) return new Set()
+        const baseId = searchProduct.value
+        const base = products.find(p => p.id === baseId)
+        if (!base) return new Set()
+        const ids = new Set(Array.isArray(base.linked_products) ? base.linked_products : [])
+        for (const p of products) {
+            if (Array.isArray(p.linked_products) && p.linked_products.includes(baseId)) {
+                ids.add(p.id)
+            }
+        }
+        return ids
+    })()
+
+    // Opções da busca: inclui name, sku e ean para o react-select filtrar.
+    // O label mostra nome + SKU; o sublabel ajuda a operador escolher rápido.
+    const searchOptions = products.map(p => ({
+        value: p.id,
+        label: p.sku ? `${p.name} — ${p.sku}` : p.name,
+        name: p.name,
+        sku: p.sku || '',
+        ean: p.ean || '',
+        quantity: p.quantity || 0,
+        hasEquivalents: Array.isArray(p.linked_products) && p.linked_products.length > 0
+    }))
+
+    // Filtro custom: matches em name, sku OU ean (default do react-select só olharia label)
+    const filterSearchOption = (option, input) => {
+        if (!input) return true
+        const q = input.toLowerCase()
+        return (
+            option.data.name?.toLowerCase().includes(q) ||
+            option.data.sku?.toLowerCase().includes(q) ||
+            option.data.ean?.toLowerCase().includes(q)
+        )
+    }
 
     // Options for linked products (excluding the current product being edited)
     const productOptions = products
@@ -253,14 +310,44 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-white">Gestão de Estoque</h2>
-                <div className="flex gap-2 w-full md:w-auto">
-                    <input
-                        type="text"
-                        placeholder="Buscar por nome ou código..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                    />
+                <div className="flex gap-2 w-full md:w-auto items-center">
+                    <div className="w-full md:w-96">
+                        <Select
+                            instanceId="stock-search"
+                            isClearable
+                            placeholder="Buscar por nome, SKU ou EAN..."
+                            value={searchProduct}
+                            onChange={(opt) => setSearchProduct(opt)}
+                            options={searchOptions}
+                            filterOption={filterSearchOption}
+                            formatOptionLabel={(opt) => (
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex flex-col">
+                                        <span className="text-white text-sm">{opt.name}</span>
+                                        <span className="text-[11px] text-gray-400">
+                                            {opt.sku && <>SKU: {opt.sku}</>}
+                                            {opt.sku && opt.ean && <> · </>}
+                                            {opt.ean && <>EAN: {opt.ean}</>}
+                                        </span>
+                                    </div>
+                                    {opt.hasEquivalents && (
+                                        <span className="text-[10px] uppercase bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-full px-2 py-0.5 font-bold whitespace-nowrap">
+                                            tem equiv.
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            noOptionsMessage={() => 'Nenhum produto encontrado'}
+                            styles={customStyles}
+                        />
+                    </div>
+                    <Link
+                        href="/import"
+                        className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border border-neutral-700 flex items-center gap-2"
+                        title="Lançar nota fiscal — XML ou manual"
+                    >
+                        <FileText className="w-4 h-4" /> Entrada de Nota Fiscal
+                    </Link>
                     <button
                         onClick={handleNew}
                         className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
@@ -289,10 +376,17 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 <tr><td colSpan="6" className="text-center py-4">Nenhum produto encontrado.</td></tr>
                             ) : (
                                 filteredProducts.map((product) => (
-                                    <tr key={product.id} className="border-b border-neutral-800 hover:bg-neutral-800">
+                                    <tr key={product.id} className={`border-b border-neutral-800 hover:bg-neutral-800 ${equivalentIds.has(product.id) ? 'bg-blue-500/5' : ''}`}>
                                         <td className="px-6 py-4 font-mono text-xs">{product.sku || '-'}</td>
                                         <td className="px-6 py-4 font-medium text-white">
-                                            {product.name}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span>{product.name}</span>
+                                                {equivalentIds.has(product.id) && (
+                                                    <span className="text-[10px] uppercase bg-blue-500/15 text-blue-300 border border-blue-500/30 rounded-full px-2 py-0.5 font-bold">
+                                                        Equivalente
+                                                    </span>
+                                                )}
+                                            </div>
                                             {product.suppliers && (
                                                 <div className="text-xs text-gray-500">{product.suppliers.name}</div>
                                             )}

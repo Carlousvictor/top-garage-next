@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function ServiceOrderPrint({ order, items, client }) {
+export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod }) {
     if (!order) return null
 
     const formatDate = (dateString) => {
@@ -20,42 +20,14 @@ export default function ServiceOrderPrint({ order, items, client }) {
     const totalProducts = products.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
     const totalServices = services.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
 
-    // Calculate next revision date based on CRM logic or use manual date
-    const calculateNextRevisionDate = () => {
-        if (order.next_revision_date) {
-            return new Date(`${order.next_revision_date}T12:00:00`);
-        }
+    const formatKm = (km) => km ? `${Number(km).toLocaleString('pt-BR')} km` : ''
 
-        let hasOil = false;
-        let hasBrakePad = false;
-
-        items.forEach(item => {
-            const desc = item.description.toLowerCase();
-            if (desc.includes('óleo') || desc.includes('oleo')) hasOil = true;
-            if (desc.includes('pastilha') || desc.includes('freio')) hasBrakePad = true;
-        });
-
-        const orderDate = order.created_at ? new Date(order.created_at) : new Date();
-        const baseDate = new Date(orderDate);
-        baseDate.setMonth(baseDate.getMonth() + 6); // Default is 6 months
-
-        return baseDate;
-    };
-
-    const getNextRevisionType = () => {
-        if (order.next_revision_date) return 'Revisão Agendada Manualmente';
-
-        let type = 'Revisão Semestral';
-        items.forEach(item => {
-            const desc = item.description.toLowerCase();
-            if (desc.includes('óleo') || desc.includes('oleo')) type = 'Troca de Óleo / Revisão Geral';
-            else if (desc.includes('pastilha') || desc.includes('freio')) type = 'Revisão Sistema de Freios / Pastilhas';
-        });
-        return type;
-    };
-
-    const nextRevisionDate = calculateNextRevisionDate();
-    const nextRevisionType = getNextRevisionType();
+    // A próxima revisão só aparece se o operador EXPLICITAMENTE preencheu data ou KM.
+    // Sem cálculo automático: dado inferido em documento impresso pode confundir o cliente.
+    const hasNextRevision = !!(order.next_revision_date || order.next_revision_km)
+    const nextRevisionDateFmt = order.next_revision_date
+        ? new Date(`${order.next_revision_date}T12:00:00`).toLocaleDateString('pt-BR')
+        : ''
 
     return (
         <div className="hidden print:flex flex-col font-sans text-black bg-white p-8 w-full h-full fixed top-0 left-0 z-[9999] print:m-0">
@@ -84,28 +56,50 @@ export default function ServiceOrderPrint({ order, items, client }) {
                     {/* Client Info */}
                     <div className="p-2 border-r border-gray-300">
                         <h3 className="font-bold uppercase bg-gray-100 px-1 py-0.5 mb-2">Cliente</h3>
-                        <div className="grid grid-cols-[60px_1fr] gap-1">
+                        <div className="grid grid-cols-[70px_1fr] gap-1">
                             <span className="font-bold">Nome:</span>
                             <span>{client?.name?.toUpperCase() || 'CONSUMIDOR FINAL'}</span>
-                            <span className="font-bold">Endereço:</span>
-                            <span>{client?.address?.toUpperCase() || ''}</span>
                             <span className="font-bold">Tel:</span>
-                            <span>{client?.phone || ''}</span>
-                            <span className="font-bold">CNPJ/CPF:</span>
-                            <span>{client?.cpf_cnpj || ''}</span>
+                            <span>{client?.phone || '—'}</span>
+                            <span className="font-bold">E-mail:</span>
+                            <span>{client?.email || '—'}</span>
+                            <span className="font-bold">CPF/CNPJ:</span>
+                            <span>{client?.document || '—'}</span>
                         </div>
                     </div>
 
-                    {/* Vehicle Info */}
+                    {/* Vehicle Info — usa o objeto `vehicle` quando disponível para
+                        mostrar info enriquecida (combustível, ano, cor, etc); cai pra
+                        order.vehicle_* quando vehicle não existe (ex: OS antiga). */}
                     <div className="p-2">
                         <h3 className="font-bold uppercase bg-gray-100 px-1 py-0.5 mb-2">Veículo / OS</h3>
                         <div className="grid grid-cols-[70px_1fr] gap-1">
-                            <span className="font-bold">Veículo:</span>
-                            <span>{order.vehicle_brand} {order.vehicle_model}</span>
                             <span className="font-bold">Placa:</span>
-                            <span className="font-bold text-sm bg-gray-100 px-1 border border-gray-300 w-max">{order.vehicle_plate}</span>
-                            <span className="font-bold">Data:</span>
+                            <span className="font-bold text-sm bg-gray-100 px-1 border border-gray-300 w-max">{vehicle?.plate || order.vehicle_plate || '—'}</span>
+                            <span className="font-bold">Veículo:</span>
+                            <span>{[vehicle?.brand || order.vehicle_brand, vehicle?.model || order.vehicle_model].filter(Boolean).join(' ') || '—'}</span>
+                            {vehicle?.submodel && (
+                                <>
+                                    <span className="font-bold">Versão:</span>
+                                    <span>{vehicle.submodel}</span>
+                                </>
+                            )}
+                            <span className="font-bold">Ano / Cor:</span>
+                            <span>{[vehicle?.year, vehicle?.color].filter(Boolean).join(' · ') || '—'}</span>
+                            {(vehicle?.fuel_type || vehicle?.engine_displacement || vehicle?.transmission) && (
+                                <>
+                                    <span className="font-bold">Motor:</span>
+                                    <span>{[vehicle?.fuel_type, vehicle?.engine_displacement, vehicle?.transmission].filter(Boolean).join(' · ')}</span>
+                                </>
+                            )}
+                            <span className="font-bold">Data OS:</span>
                             <span>{formatDate(order.created_at || new Date())}</span>
+                            {order.current_km && (
+                                <>
+                                    <span className="font-bold">KM atual:</span>
+                                    <span className="font-bold">{formatKm(order.current_km)}</span>
+                                </>
+                            )}
                             <span className="font-bold">Status:</span>
                             <span className="uppercase">{order.status}</span>
                         </div>
@@ -141,7 +135,7 @@ export default function ServiceOrderPrint({ order, items, client }) {
                     </table>
                 </div>
 
-                {/* Totals Section */}
+                {/* Totals + Pagamento */}
                 <div className="flex justify-end mb-6">
                     <div className="w-1/2 border border-black p-0.5">
                         <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
@@ -152,6 +146,12 @@ export default function ServiceOrderPrint({ order, items, client }) {
                             <span className="text-xs uppercase font-bold">Total Peças</span>
                             <span className="text-sm font-medium">R$ {totalProducts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
+                        {paymentMethod && (
+                            <div className="flex justify-between items-center bg-gray-50 p-1 border-b border-gray-300">
+                                <span className="text-xs uppercase font-bold">Forma de Pagamento</span>
+                                <span className="text-sm font-bold">{paymentMethod}</span>
+                            </div>
+                        )}
                         <div className="flex justify-between items-center bg-black text-white p-2">
                             <span className="text-sm uppercase font-black">Total Geral</span>
                             <span className="text-xl font-black">R$ {(totalProducts + totalServices).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
@@ -167,52 +167,45 @@ export default function ServiceOrderPrint({ order, items, client }) {
                     </div>
                 )}
 
-                {/* Next Revision Highlight */}
-                <div className="mb-4 border-2 border-dashed border-red-600 bg-red-50 p-3 text-center rounded">
-                    <h3 className="text-red-800 font-bold uppercase text-sm mb-1">Próxima Revisão Programada</h3>
-                    <p className="text-red-900 font-medium font-bold text-lg">
-                        {formatDate(nextRevisionDate).split(' ')[0]} {/* Apenas a data */}
-                    </p>
-                    <p className="text-red-700 text-xs mt-1 uppercase font-bold">{nextRevisionType}</p>
-                </div>
+                {/* Next Revision Highlight — só aparece quando data ou KM foram explicitamente preenchidos */}
+                {hasNextRevision && (
+                    <div className="mb-4 border-2 border-dashed border-red-600 bg-red-50 p-3 text-center rounded">
+                        <h3 className="text-red-800 font-bold uppercase text-sm mb-2">Próxima Revisão Programada</h3>
+                        <div className="flex justify-center items-center gap-6">
+                            {nextRevisionDateFmt && (
+                                <div>
+                                    <p className="text-[10px] uppercase text-red-700 font-bold tracking-wide">Data</p>
+                                    <p className="text-red-900 font-black text-lg">{nextRevisionDateFmt}</p>
+                                </div>
+                            )}
+                            {order.next_revision_km && (
+                                <div>
+                                    <p className="text-[10px] uppercase text-red-700 font-bold tracking-wide">Quilometragem</p>
+                                    <p className="text-red-900 font-black text-lg">{formatKm(order.next_revision_km)}</p>
+                                </div>
+                            )}
+                        </div>
+                        {nextRevisionDateFmt && order.next_revision_km && (
+                            <p className="text-red-700 text-[10px] mt-2 uppercase font-bold">O que ocorrer primeiro</p>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Footer / Signatures - 4 Columns as specificed */}
+            {/* Footer / Signatures — 2 colunas: Entregue + Programado */}
             <div className="mt-8 pt-4 border-t-2 border-black">
-                <div className="grid grid-cols-4 gap-4 text-center text-[10px] uppercase font-bold tracking-tight">
-
-                    {/* Column 1: Vistoriado */}
-                    <div className="flex flex-col items-center">
-                        <div className="mb-8 w-full border-b border-black"></div>
-                        <span>VISTORIADO</span>
-                        <span className="text-[8px] font-normal mt-1 text-gray-500">___/___/______</span>
-                    </div>
-
-                    {/* Column 2: Autorizado */}
-                    <div className="flex flex-col items-center">
-                        <div className="mb-8 w-full border-b border-black"></div>
-                        <span>AUTORIZADO</span>
-                        <span className="text-[8px] font-normal mt-1 text-gray-500">___/___/______</span>
-                    </div>
-
-                    {/* Column 3: Entregue */}
+                <div className="grid grid-cols-2 gap-12 text-center text-[10px] uppercase font-bold tracking-tight">
                     <div className="flex flex-col items-center">
                         <div className="mb-8 w-full border-b border-black"></div>
                         <span>ENTREGUE</span>
                         <span className="text-[8px] font-normal mt-1 text-gray-500">___/___/______</span>
                     </div>
 
-                    {/* Column 4: Programado */}
                     <div className="flex flex-col items-center">
                         <div className="mb-8 w-full border-b border-black"></div>
                         <span>PROGRAMADO</span>
                         <span className="text-[8px] font-normal mt-1 text-gray-500">___/___/______</span>
                     </div>
-
-                </div>
-
-                <div className="mt-4 text-[9px] text-center text-gray-400">
-                    <p>Serviço realizado por Top Garage - Documento sem valor fiscal</p>
                 </div>
             </div>
         </div>

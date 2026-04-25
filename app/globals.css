@@ -5,6 +5,22 @@
   --foreground: #171717;
 }
 
+/* Print: zera margens da página para suprimir o cabeçalho/rodapé automático
+   do navegador (URL "localhost...", título da aba, número de página). O conteúdo
+   mantém suas próprias margens via padding no container `.print:p-8`.
+   Funciona no Chrome/Edge — Firefox ainda mostra o footer mesmo com margin 0,
+   mas o usuário pode desativar manualmente em "Cabeçalhos e rodapés" no diálogo. */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

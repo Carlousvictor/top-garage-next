@@ -6,8 +6,9 @@ import { useAuth } from '../context/AuthContext'
 import {
     ArrowRightLeft, TrendingUp, TrendingDown, DollarSign, Wallet,
     CreditCard, Landmark, PiggyBank, PlusCircle, Lock, Unlock,
-    CalendarDays, CheckCircle2, AlertTriangle
+    CalendarDays, CheckCircle2, AlertTriangle, BarChart3, Activity
 } from 'lucide-react'
+import MovementPeriodReport from './MovementPeriodReport'
 
 export default function DailyMovement() {
     const supabase = createClient()
@@ -23,6 +24,8 @@ export default function DailyMovement() {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     })()
     const [selectedDate, setSelectedDate] = useState(initialDate)
+    // Aba ativa: 'daily' (movimento de um dia) ou 'period' (histórico + gráficos)
+    const [activeTab, setActiveTab] = useState('daily')
 
     const [transactions, setTransactions] = useState([])
     const [loading, setLoading] = useState(true)
@@ -195,14 +198,46 @@ export default function DailyMovement() {
         return `${d}/${m}/${y}`
     }
 
-    if (loading) {
-        return <div className="p-8 text-center text-gray-400 animate-pulse">Carregando movimento do dia...</div>
-    }
-
     const hasMovement = transactions.length > 0
+
+    // Quando o usuário clica num dia da lista do relatório, troca pra aba Diário focando aquele dia.
+    const handleSelectDayFromPeriod = (day) => {
+        setSelectedDate(day)
+        setActiveTab('daily')
+    }
 
     return (
         <div className="space-y-6">
+            {/* Abas */}
+            <div className="flex gap-1 bg-neutral-900 border border-neutral-800 rounded-xl p-1 w-fit">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('daily')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'daily'
+                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                        : 'text-gray-400 hover:text-white'
+                        }`}
+                >
+                    <Activity className="w-4 h-4" /> Diário
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('period')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'period'
+                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                        : 'text-gray-400 hover:text-white'
+                        }`}
+                >
+                    <BarChart3 className="w-4 h-4" /> Histórico & Período
+                </button>
+            </div>
+
+            {activeTab === 'period' ? (
+                <MovementPeriodReport onSelectDay={handleSelectDayFromPeriod} />
+            ) : loading ? (
+                <div className="p-8 text-center text-gray-400 animate-pulse">Carregando movimento do dia...</div>
+            ) : (
+            <>
             <div className="flex flex-col md:flex-row justify-between md:items-end gap-4">
                 <div>
                     <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
@@ -513,6 +548,8 @@ export default function DailyMovement() {
                         </div>
                     </div>
                 </div>
+            )}
+            </>
             )}
         </div>
     )

@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 import CreatableSelect from 'react-select/creatable'
+import QuickClientModal from './QuickClientModal'
+import { UserPlus, Car, X as XIcon } from 'lucide-react'
 
 // Dark theme for react-select, alinhado ao resto do app (neutral-800/700 + vermelho).
 const selectStyles = {
@@ -56,6 +58,8 @@ export default function ServiceOrderForm({ order }) {
     const [observation, setObservation] = useState(order?.observation || '')
     const [isEstimate, setIsEstimate] = useState(order?.is_estimate || false)
     const [nextRevisionDate, setNextRevisionDate] = useState(order?.next_revision_date ? order.next_revision_date.split('T')[0] : '')
+    const [currentKm, setCurrentKm] = useState(order?.current_km?.toString() || '')
+    const [nextRevisionKm, setNextRevisionKm] = useState(order?.next_revision_km?.toString() || '')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro') // New state
     const [items, setItems] = useState([]) // Will fetch later if edit
 
@@ -66,6 +70,10 @@ export default function ServiceOrderForm({ order }) {
 
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedService, setSelectedService] = useState('')
+    const [isClientModalOpen, setIsClientModalOpen] = useState(false)
+    // Veículo "ativo" — preenchido pelo auto-fill (1 veículo) ou pelo picker (2+).
+    // Permite renderizar a card readonly com info completa (combustível, cilindrada, etc).
+    const [selectedVehicle, setSelectedVehicle] = useState(null)
 
     useEffect(() => {
         const fetchData = async () => {
@@ -93,9 +101,26 @@ export default function ServiceOrderForm({ order }) {
         const fetchVehicles = async () => {
             if (clientId) {
                 const { data } = await supabase.from('vehicles').select('*').eq('client_id', clientId).order('created_at')
-                setClientVehicles(data || [])
+                const vehicles = data || []
+                setClientVehicles(vehicles)
+                // Auto-preenche quando o cliente tem só 1 veículo E os campos ainda estão vazios.
+                // Edit mode (com plate já preenchido pelo `order`) é preservado — não sobrescreve.
+                if (vehicles.length === 1 && !plate) {
+                    const v = vehicles[0]
+                    setPlate(v.plate)
+                    setBrand(v.brand || '')
+                    setModel(v.model || '')
+                    setSelectedVehicle(v)
+                }
+                // Em edit mode com plate já preenchido, tenta achar o veículo correspondente
+                // pra mostrar a card também
+                if (plate && vehicles.length > 0) {
+                    const match = vehicles.find(v => v.plate?.toUpperCase() === plate.toUpperCase())
+                    if (match) setSelectedVehicle(match)
+                }
             } else {
                 setClientVehicles([])
+                setSelectedVehicle(null)
             }
         }
         fetchVehicles()
@@ -184,6 +209,8 @@ export default function ServiceOrderForm({ order }) {
                 observation,
                 is_estimate: isEstimate,
                 next_revision_date: nextRevisionDate || null,
+                current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
+                next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
                 total
             }
 
@@ -305,7 +332,16 @@ export default function ServiceOrderForm({ order }) {
                     {/* Vehicle & Client Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Cliente</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-sm font-medium text-gray-300">Cliente</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setIsClientModalOpen(true)}
+                                    className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition"
+                                >
+                                    <UserPlus className="w-3.5 h-3.5" /> Novo cliente
+                                </button>
+                            </div>
                             <select
                                 value={clientId}
                                 onChange={(e) => setClientId(e.target.value)}
@@ -318,9 +354,9 @@ export default function ServiceOrderForm({ order }) {
                             </select>
                         </div>
 
-                        {clientVehicles.length > 0 && (
+                        {clientVehicles.length > 1 && (
                             <div className="md:col-span-2 bg-neutral-950 p-3 rounded border border-blue-900/30">
-                                <label className="block text-xs font-medium text-blue-400 mb-2">Autopreenchimento: Selecione um veículo do cliente</label>
+                                <label className="block text-xs font-medium text-blue-400 mb-2">Cliente tem {clientVehicles.length} veículos. Selecione qual:</label>
                                 <div className="flex flex-wrap gap-2">
                                     {clientVehicles.map(v => (
                                         <button
@@ -330,12 +366,75 @@ export default function ServiceOrderForm({ order }) {
                                                 setPlate(v.plate)
                                                 setBrand(v.brand || '')
                                                 setModel(v.model || '')
+                                                setSelectedVehicle(v)
                                             }}
                                             className="bg-neutral-800 hover:bg-neutral-700 text-gray-200 px-3 py-1.5 rounded text-sm border border-neutral-700 transition"
                                         >
                                             {v.plate} - {v.brand} {v.model}
                                         </button>
                                     ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedVehicle && (
+                            <div className="md:col-span-2 bg-blue-500/5 border border-blue-500/30 rounded-lg p-4 relative">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedVehicle(null)
+                                        setPlate('')
+                                        setBrand('')
+                                        setModel('')
+                                    }}
+                                    title="Limpar veículo selecionado"
+                                    className="absolute top-2 right-2 text-gray-500 hover:text-red-400 transition"
+                                >
+                                    <XIcon className="w-4 h-4" />
+                                </button>
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Car className="w-4 h-4 text-blue-400" />
+                                    <h3 className="text-sm font-bold text-blue-300">Informações do veículo</h3>
+                                </div>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Placa</p>
+                                        <p className="text-white font-bold font-mono">{selectedVehicle.plate || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Marca / Modelo</p>
+                                        <p className="text-white font-bold">{[selectedVehicle.brand, selectedVehicle.model].filter(Boolean).join(' ') || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Versão</p>
+                                        <p className="text-gray-200">{selectedVehicle.submodel || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Ano</p>
+                                        <p className="text-gray-200">{selectedVehicle.year || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Cor</p>
+                                        <p className="text-gray-200">{selectedVehicle.color || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Combustível</p>
+                                        <p className="text-gray-200">{selectedVehicle.fuel_type || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Cilindrada</p>
+                                        <p className="text-gray-200">{selectedVehicle.engine_displacement || '—'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Câmbio</p>
+                                        <p className="text-gray-200">{selectedVehicle.transmission || '—'}</p>
+                                    </div>
+                                    {selectedVehicle.chassi && (
+                                        <div className="col-span-2 md:col-span-4 border-t border-blue-900/30 pt-2 mt-1">
+                                            <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Chassi</p>
+                                            <p className="text-gray-300 font-mono text-xs">{selectedVehicle.chassi}</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -362,6 +461,17 @@ export default function ServiceOrderForm({ order }) {
                             />
                         </div>
                         <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">KM atual</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                value={currentKm}
+                                onChange={(e) => setCurrentKm(e.target.value.replace(/\D/g, ''))}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                placeholder="Ex: 45000"
+                            />
+                        </div>
+                        <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Status</label>
                             <select
                                 value={status}
@@ -378,16 +488,30 @@ export default function ServiceOrderForm({ order }) {
 
                     {status === 'Concluido' && (
                         <div className="bg-neutral-950 p-4 border border-blue-900/40 rounded-lg shadow-sm">
-                            <h3 className="text-sm font-bold text-blue-400 mb-2">Pós-Venda / CRM</h3>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Data da Próxima Revisão (Para acionamento no WhatsApp)</label>
-                                <input
-                                    type="date"
-                                    value={nextRevisionDate}
-                                    onChange={(e) => setNextRevisionDate(e.target.value)}
-                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-1/2 p-2.5"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">Ao definir uma data aqui, ela será usada como a data oficial para o alerta do CRM em vez do cálculo automático de tempo.</p>
+                            <h3 className="text-sm font-bold text-blue-400 mb-3">Pós-Venda / CRM</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Data da Próxima Revisão</label>
+                                    <input
+                                        type="date"
+                                        value={nextRevisionDate}
+                                        onChange={(e) => setNextRevisionDate(e.target.value)}
+                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Usada para o alerta no CRM via WhatsApp.</p>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">KM da Próxima Revisão</label>
+                                    <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={nextRevisionKm}
+                                        onChange={(e) => setNextRevisionKm(e.target.value.replace(/\D/g, ''))}
+                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                        placeholder={currentKm ? `Ex: ${parseInt(currentKm) + 10000}` : 'Ex: 55000'}
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Ex: KM atual + 10.000 km — o que ocorrer primeiro com a data.</p>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -637,6 +761,19 @@ export default function ServiceOrderForm({ order }) {
                 order={order}
                 items={items}
                 client={clients.find(c => c.id == clientId) || { name: 'Consumidor Final' }}
+                vehicle={selectedVehicle}
+                paymentMethod={paymentMethod}
+            />
+
+            <QuickClientModal
+                isOpen={isClientModalOpen}
+                onClose={() => setIsClientModalOpen(false)}
+                onCreated={(newClient) => {
+                    // Adiciona no select e já seleciona ele — sem perder o que estava digitado na OS.
+                    setClients(prev => [...prev, newClient].sort((a, b) => a.name.localeCompare(b.name)))
+                    setClientId(String(newClient.id))
+                    setIsClientModalOpen(false)
+                }}
             />
         </>
 
