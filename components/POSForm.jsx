@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
-import Select from 'react-select'
+import CreatableSelect from 'react-select/creatable'
 
 export default function POSForm() {
     const supabase = createClient()
@@ -78,7 +78,7 @@ export default function POSForm() {
         const isPending = status === 'pending'
 
         if (isPending && !selectedClient) {
-            alert('Para deixar a venda em aberto, selecione um cliente — assim sabemos quem deve.')
+            alert('Para deixar a venda em aberto, informe o cliente — selecione um cadastrado ou digite o nome.')
             return
         }
 
@@ -258,15 +258,16 @@ export default function POSForm() {
                     </div>
 
                     <div className="mt-6 mb-4">
-                        <label className="block text-sm text-gray-400 mb-2">Cliente (obrigatório se for fiado):</label>
-                        <Select
+                        <label className="block text-sm text-gray-400 mb-2">Cliente:</label>
+                        <CreatableSelect
                             instanceId="pdv-client"
                             isClearable
-                            placeholder="Buscar cliente..."
+                            placeholder="Buscar ou digitar nome do cliente..."
+                            formatCreateLabel={(input) => `Usar: "${input}"`}
+                            noOptionsMessage={() => 'Nenhum cadastro. Digite o nome para usar mesmo assim.'}
                             options={clients.map(c => ({ value: c.id, label: c.name }))}
                             value={selectedClient}
                             onChange={(opt) => setSelectedClient(opt)}
-                            noOptionsMessage={() => 'Nenhum cliente encontrado'}
                             styles={selectStyles}
                         />
                     </div>
