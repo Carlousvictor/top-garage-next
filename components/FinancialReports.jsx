@@ -170,20 +170,12 @@ export default function FinancialReports({
             const name = it.services?.name || it.description || 'Serviço sem nome'
             const qty = Number(it.quantity || 0)
             const revenue = qty * Number(it.unit_price || 0)
-            const unitCost = Number(it.services?.cost || 0)
-            const cost = qty * unitCost
-            const cur = map.get(name) || { name, qty: 0, revenue: 0, cost: 0 }
+            const cur = map.get(name) || { name, qty: 0, revenue: 0 }
             cur.qty += qty
             cur.revenue += revenue
-            cur.cost += cost
             map.set(name, cur)
         })
         return [...map.values()]
-            .map((r) => ({
-                ...r,
-                profit: r.revenue - r.cost,
-                margin: r.revenue > 0 ? ((r.revenue - r.cost) / r.revenue) * 100 : 0,
-            }))
             .sort((a, b) => b.qty - a.qty)
             .slice(0, 20)
     }, [items])
@@ -275,14 +267,11 @@ export default function FinancialReports({
         } else if (tab === 'services') {
             downloadCSV(
                 [
-                    ['Serviço', 'Qtd', 'Receita (R$)', 'Custo (R$)', 'Lucro (R$)', 'Margem %'],
+                    ['Serviço', 'Qtd', 'Receita (R$)'],
                     ...topServices.map((r) => [
                         r.name,
                         r.qty,
                         r.revenue.toFixed(2),
-                        r.cost.toFixed(2),
-                        r.profit.toFixed(2),
-                        r.margin.toFixed(1),
                     ]),
                 ],
                 `servicos_${from}_a_${to}.csv`,
@@ -539,20 +528,11 @@ export default function FinancialReports({
                         { label: 'Serviço', key: 'name' },
                         { label: 'Qtd', key: 'qty', format: INT, align: 'right' },
                         { label: 'Receita', key: 'revenue', format: BRL, align: 'right' },
-                        { label: 'Custo', key: 'cost', format: BRL, align: 'right' },
-                        { label: 'Lucro', key: 'profit', format: BRL, align: 'right' },
-                        {
-                            label: 'Margem',
-                            key: 'margin',
-                            format: (v) => `${Number(v).toFixed(0)}%`,
-                            align: 'right',
-                        },
                     ]}
                     barKey="qty"
                     barMax={maxServiceQty}
                     barColor="bg-blue-500"
                     emptyMsg="Nenhum serviço realizado no período."
-                    footnote="Margem depende do campo 'Custo' estar preenchido em cada serviço (módulo Serviços)."
                 />
             )}
 

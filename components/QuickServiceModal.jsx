@@ -13,7 +13,6 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
 
     const [name, setName] = useState(initialName)
     const [price, setPrice] = useState('')
-    const [cost, setCost] = useState('')
     const [description, setDescription] = useState('')
 
     const [saving, setSaving] = useState(false)
@@ -65,7 +64,6 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
                 tenant_id: tenantId,
                 name: name.trim(),
                 price: priceNum,
-                cost: parseCurrency(cost) || 0,
                 description: description.trim() || null
             }])
             .select()
@@ -81,7 +79,6 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
         onCreated(data)
         setName('')
         setPrice('')
-        setCost('')
         setDescription('')
     }
 
@@ -115,29 +112,17 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
                         />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="block text-sm text-gray-300 mb-1">
-                                Preço (R$) <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="text"
-                                value={price}
-                                onChange={(e) => setPrice(formatInputCurrency(e.target.value))}
-                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
-                                placeholder="R$ 0,00"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm text-gray-300 mb-1">Custo (R$)</label>
-                            <input
-                                type="text"
-                                value={cost}
-                                onChange={(e) => setCost(formatInputCurrency(e.target.value))}
-                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
-                                placeholder="Opcional"
-                            />
-                        </div>
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">
+                            Preço (R$) <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={price}
+                            onChange={(e) => setPrice(formatInputCurrency(e.target.value))}
+                            className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                            placeholder="R$ 0,00"
+                        />
                     </div>
 
                     <div>
