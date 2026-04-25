@@ -8,7 +8,8 @@ import CreatableSelect from 'react-select/creatable'
 import QuickClientModal from './QuickClientModal'
 import QuickProductModal from './QuickProductModal'
 import QuickServiceModal from './QuickServiceModal'
-import { UserPlus, Car, X as XIcon, Plus } from 'lucide-react'
+import QuickVehicleModal from './QuickVehicleModal'
+import { UserPlus, Car, CarFront, X as XIcon, Plus } from 'lucide-react'
 
 // Dark theme for react-select, alinhado ao resto do app (neutral-800/700 + vermelho).
 const selectStyles = {
@@ -73,6 +74,7 @@ export default function ServiceOrderForm({ order }) {
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedService, setSelectedService] = useState('')
     const [isClientModalOpen, setIsClientModalOpen] = useState(false)
+    const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false)
     // Cadastro rápido inline: o que o operador digitou no select é usado como
     // initialName do modal pra evitar redigitação.
     const [isProductModalOpen, setIsProductModalOpen] = useState(false)
@@ -372,22 +374,36 @@ export default function ServiceOrderForm({ order }) {
                     {/* Vehicle & Client Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
-                            <div className="flex items-center justify-between mb-1">
-                                <label className="block text-sm font-medium text-gray-300">Cliente</label>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsClientModalOpen(true)}
-                                    className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition"
-                                >
-                                    <UserPlus className="w-3.5 h-3.5" /> Novo cliente
-                                </button>
+                            <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+                                <label className="block text-sm font-medium text-gray-300">
+                                    Cliente <span className="text-red-500">*</span>
+                                </label>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsClientModalOpen(true)}
+                                        className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition"
+                                    >
+                                        <UserPlus className="w-3.5 h-3.5" /> Novo cliente
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsVehicleModalOpen(true)}
+                                        disabled={!clientId}
+                                        title={!clientId ? 'Selecione o cliente primeiro' : 'Cadastrar um novo veículo para este cliente'}
+                                        className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        <CarFront className="w-3.5 h-3.5" /> Adicionar veículo
+                                    </button>
+                                </div>
                             </div>
                             <select
                                 value={clientId}
                                 onChange={(e) => setClientId(e.target.value)}
+                                required
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             >
-                                <option value="">Selecione um cliente (ou deixe vazio)</option>
+                                <option value="">Selecione um cliente</option>
                                 {clients.map(c => (
                                     <option key={c.id} value={c.id}>{c.name}</option>
                                 ))}
@@ -861,6 +877,24 @@ export default function ServiceOrderForm({ order }) {
                 onClose={() => setIsServiceModalOpen(false)}
                 onCreated={handleServiceCreated}
                 initialName={serviceModalInitialName}
+            />
+
+            <QuickVehicleModal
+                isOpen={isVehicleModalOpen}
+                onClose={() => setIsVehicleModalOpen(false)}
+                clientId={clientId}
+                clientName={clients.find(c => String(c.id) === String(clientId))?.name}
+                onCreated={(newVehicle) => {
+                    // Adiciona à lista de veículos do cliente e já seleciona como ativo na OS.
+                    // Sobrescreve plate/brand/model mesmo que estivessem preenchidos —
+                    // o operador clicou no botão pra usar este veículo novo.
+                    setClientVehicles(prev => [...prev, newVehicle])
+                    setSelectedVehicle(newVehicle)
+                    setPlate(newVehicle.plate || '')
+                    setBrand(newVehicle.brand || '')
+                    setModel(newVehicle.model || '')
+                    setIsVehicleModalOpen(false)
+                }}
             />
         </>
 
