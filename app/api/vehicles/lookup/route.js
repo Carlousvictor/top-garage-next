@@ -127,8 +127,14 @@ export async function GET(request) {
 
     const token = process.env.APIPLACAS_TOKEN
     if (!token) {
+        // Log no server pra debug deploy. Mensagem do cliente cobre os 2 cenários
+        // mais comuns: dev (esqueceu de reiniciar após editar .env.local) ou
+        // produção (esqueceu de cadastrar a env no painel do host).
+        console.warn('[APIPlacas] APIPLACAS_TOKEN ausente em process.env. Verifique .env.local (dev) ou variáveis do host (produção).')
         return NextResponse.json(
-            { error: 'APIPLACAS_TOKEN não configurado no servidor' },
+            {
+                error: 'Consulta de placa indisponível: a chave APIPLACAS_TOKEN não está configurada no servidor. Em desenvolvimento, adicione ao .env.local e reinicie o servidor. Em produção, configure no painel de variáveis de ambiente do host (Vercel/Render/etc) e faça um redeploy.'
+            },
             { status: 500 },
         )
     }
