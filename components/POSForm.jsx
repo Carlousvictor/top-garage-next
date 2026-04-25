@@ -15,8 +15,20 @@ export default function POSForm() {
     const [cart, setCart] = useState([])
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedClient, setSelectedClient] = useState(null)
+    // Texto que o operador digitou no select de cliente — capturado em paralelo ao
+    // selectedClient pra que o nome digitado seja aproveitado mesmo sem Enter/click.
+    const [clientInputText, setClientInputText] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro')
     const [loading, setLoading] = useState(false)
+
+    // Resolve o nome do cliente pra gravar na descrição da transação.
+    // Hierarquia: cliente selecionado > nome digitado > "Consumidor" (padrão).
+    const resolveClientLabel = () => {
+        if (selectedClient?.label) return selectedClient.label
+        const typed = clientInputText.trim()
+        if (typed) return typed
+        return 'Consumidor'
+    }
 
     useEffect(() => {
         const fetchData = async () => {
@@ -76,14 +88,18 @@ export default function POSForm() {
 
         const total = calculateTotal()
         const isPending = status === 'pending'
+        const clientLabel = resolveClientLabel()
+        const hasIdentifiedClient = !!selectedClient || !!clientInputText.trim()
 
-        if (isPending && !selectedClient) {
+        // Pra venda em aberto exigimos cliente identificado (selecionado OU digitado).
+        // "Consumidor" anônimo não é aceitável aqui — não dá pra cobrar depois.
+        if (isPending && !hasIdentifiedClient) {
             alert('Para deixar a venda em aberto, informe o cliente — selecione um cadastrado ou digite o nome.')
             return
         }
 
         const confirmMsg = isPending
-            ? `Deixar venda EM ABERTO no valor de R$ ${total.toFixed(2)} para ${selectedClient.label}?\nO estoque será baixado e a venda ficará pendente até ser finalizada.`
+            ? `Deixar venda EM ABERTO no valor de R$ ${total.toFixed(2)} para ${clientLabel}?\nO estoque será baixado e a venda ficará pendente até ser finalizada.`
             : `Confirmar venda no valor de R$ ${total.toFixed(2)}?`
         if (!window.confirm(confirmMsg)) return
 
@@ -113,10 +129,10 @@ export default function POSForm() {
             }
 
             // 2. Register Transaction (Income)
-            const clientLabel = selectedClient ? ` - ${selectedClient.label}` : ''
+            // clientLabel já resolvido acima — sempre tem valor (cadastrado, digitado ou "Consumidor").
             const description = isPending
-                ? `Venda Balcão (PDV) - Em Aberto${clientLabel}`
-                : `Venda Balcão (PDV) - ${paymentMethod}${clientLabel}`
+                ? `Venda Balcão (PDV) - Em Aberto - ${clientLabel}`
+                : `Venda Balcão (PDV) - ${paymentMethod} - ${clientLabel}`
 
             const { error: txError } = await supabase.from('transactions').insert([{
                 tenant_id: tenantId,
@@ -134,6 +150,7 @@ export default function POSForm() {
             alert(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
             setCart([])
             setSelectedClient(null)
+            setClientInputText('')
             window.location.reload()
         } catch (error) {
             console.error(error)
@@ -262,14 +279,25 @@ export default function POSForm() {
                         <CreatableSelect
                             instanceId="pdv-client"
                             isClearable
-                            placeholder="Buscar ou digitar nome do cliente..."
+                            placeholder='Buscar, digitar ou deixar como "Consumidor"...'
                             formatCreateLabel={(input) => `Usar: "${input}"`}
-                            noOptionsMessage={() => 'Nenhum cadastro. Digite o nome para usar mesmo assim.'}
+                            noOptionsMessage={() => 'Nenhum cadastro encontrado — pode digitar o nome livremente.'}
                             options={clients.map(c => ({ value: c.id, label: c.name }))}
                             value={selectedClient}
-                            onChange={(opt) => setSelectedClient(opt)}
+                            onChange={(opt) => {
+                                setSelectedClient(opt)
+                                // Limpa o input quando o operador escolhe da lista — evita
+                                // confusão entre "selecionado" e "digitado".
+                                if (opt) setClientInputText('')
+                            }}
+                            onInputChange={(input, action) => {
+                                if (action.action === 'input-change') setClientInputText(input)
+                            }}
                             styles={selectStyles}
                         />
+                        <p className="text-[11px] text-gray-500 mt-1">
+                            Se ninguém for selecionado/digitado, a venda fica como <strong>Consumidor</strong>.
+                        </p>
                     </div>
 
                     <div className="mt-4 mb-4">
