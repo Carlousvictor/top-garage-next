@@ -401,6 +401,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             <tr>
                                 <th className="px-6 py-3">Cód/SKU</th>
                                 <th className="px-6 py-3">Produto</th>
+                                <th className="px-6 py-3">Categoria</th>
                                 <th className="px-6 py-3 text-center">Qtd</th>
                                 <th className="px-6 py-3">Custo (R$)</th>
                                 <th className="px-6 py-3">Venda (R$)</th>
@@ -409,7 +410,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         </thead>
                         <tbody>
                             {filteredProducts.length === 0 ? (
-                                <tr><td colSpan="6" className="text-center py-4">Nenhum produto encontrado.</td></tr>
+                                <tr><td colSpan="7" className="text-center py-4">Nenhum produto encontrado.</td></tr>
                             ) : (
                                 filteredProducts.map((product) => (
                                     <tr key={product.id} className={`border-b border-neutral-800 hover:bg-neutral-800 ${equivalentIds.has(product.id) ? 'bg-blue-500/5' : ''}`}>
@@ -425,6 +426,18 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                             </div>
                                             {product.suppliers && (
                                                 <div className="text-xs text-gray-500">{product.suppliers.name}</div>
+                                            )}
+                                            {product.brands && (
+                                                <div className="text-[10px] uppercase tracking-wide text-gray-600">{product.brands.name}</div>
+                                            )}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            {product.categories ? (
+                                                <span className="inline-block bg-neutral-800 border border-neutral-700 text-gray-300 text-xs rounded-full px-2.5 py-1">
+                                                    {product.categories.name}
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-600 text-xs">—</span>
                                             )}
                                         </td>
                                         <td className={`px-6 py-4 text-center font-bold ${product.quantity <= 5 ? 'text-red-500' : 'text-green-500'}`}>

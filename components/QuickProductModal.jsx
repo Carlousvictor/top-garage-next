@@ -289,6 +289,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                                 onChange={(e) => setQuantity(e.target.value)}
                                 className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
                             />
+                            <p className="text-[10px] text-gray-500 mt-1">Quantidade que entra agora.</p>
                         </div>
                         <div>
                             <label className="block text-sm text-gray-300 mb-1">Estoque mínimo</label>
@@ -297,7 +298,9 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                                 value={minQuantity}
                                 onChange={(e) => setMinQuantity(e.target.value)}
                                 className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                                placeholder="Ex: 2"
                             />
+                            <p className="text-[10px] text-gray-500 mt-1">Alerta quando cair abaixo.</p>
                         </div>
                     </div>
 
