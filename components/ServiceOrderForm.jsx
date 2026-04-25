@@ -321,7 +321,20 @@ export default function ServiceOrderForm({ order }) {
     }
 
     const handleFinish = async () => {
-        if (!window.confirm('Deseja realmente finalizar a OS? Isso irá baixar o estoque e lançar a receita.')) return
+        // Pré-calcula a data pra usar tanto no UPDATE da OS quanto na transação.
+        // Garante consistência: a OS e o lançamento financeiro caem na MESMA data,
+        // mesmo se for retroativa.
+        const serviceDateISO = (() => {
+            const [y, m, d] = serviceDate.split('-').map(Number)
+            return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+        })()
+        const isRetroactive = serviceDate !== todayLocalISO
+        const dateDisplay = serviceDate.split('-').reverse().join('/')
+
+        const confirmMsg = isRetroactive
+            ? `Finalizar OS RETROATIVA com data ${dateDisplay}?\n\nA receita financeira será lançada nessa data (não em hoje).\n\nO estoque NÃO será baixado — os itens dessa OS são considerados histórico (já saíram do depósito no passado).`
+            : 'Deseja realmente finalizar a OS? Isso irá baixar o estoque e lançar a receita.'
+        if (!window.confirm(confirmMsg)) return
         setLoading(true)
 
         if (!companyId) {
@@ -333,37 +346,42 @@ export default function ServiceOrderForm({ order }) {
         try {
             const total = calculateTotal()
 
+            // Inclui created_at no UPDATE pra garantir que a data da OS fique
+            // alinhada com a data da transação — mesmo se a serviceDate foi
+            // alterada no form sem clicar em "Salvar OS" antes.
             const { error: osError } = await supabase
                 .from('service_orders')
-                .update({ status: 'Concluido', total })
+                .update({ status: 'Concluido', total, created_at: serviceDateISO })
                 .eq('id', order.id)
 
             if (osError) throw osError
 
-            for (const item of items) {
-                if (item.type === 'product' && item.product_id) {
-                    const { data: prod } = await supabase
-                        .from('products')
-                        .select('quantity')
-                        .eq('id', item.product_id)
-                        .single()
-
-                    if (prod) {
-                        await supabase
+            // Decremento de estoque APENAS pra OS de hoje. Em OS retroativa, os
+            // itens já foram consumidos no passado — o estoque atual reflete o
+            // presente, então não devemos abater de novo. Isso é crítico pra
+            // import de histórico funcionar sem zerar o estoque atual.
+            if (!isRetroactive) {
+                for (const item of items) {
+                    if (item.type === 'product' && item.product_id) {
+                        const { data: prod } = await supabase
                             .from('products')
-                            .update({ quantity: prod.quantity - item.quantity })
+                            .select('quantity')
                             .eq('id', item.product_id)
+                            .single()
+
+                        if (prod) {
+                            await supabase
+                                .from('products')
+                                .update({ quantity: prod.quantity - item.quantity })
+                                .eq('id', item.product_id)
+                        }
                     }
                 }
             }
 
-            // Data da transação = data da OS. Em OS retroativa cai no mês
-            // correto dos relatórios; em OS de hoje, é equivalente a now().
-            const txDate = (() => {
-                const [y, m, d] = serviceDate.split('-').map(Number)
-                return new Date(y, m - 1, d, 12, 0, 0).toISOString()
-            })()
-
+            // Mesma data usada acima — receita financeira na data da OS.
+            // Em OS retroativa cai no mês correto dos relatórios; em OS de
+            // hoje, é equivalente a now() (12:00 local).
             await supabase.from('transactions').insert([{
                 tenant_id: companyId,
                 description: `Receita OS #${order.id} - Placa ${plate}`,
@@ -373,7 +391,7 @@ export default function ServiceOrderForm({ order }) {
                 related_os_id: order.id,
                 status: 'paid',
                 payment_method: paymentMethod,
-                date: txDate
+                date: serviceDateISO
             }])
 
             alert('OS Finalizada com sucesso!')
