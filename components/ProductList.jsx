@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import Select from 'react-select'
+import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FileText } from 'lucide-react'
@@ -130,6 +131,41 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             profit_margin_percent: newMargin,
             selling_price: newSelling || prev.selling_price
         }))
+    }
+
+    // Cria categoria sob demanda quando o usuário digita um nome novo no select.
+    // A categoria nasce ligada ao tenant atual e fica imediatamente disponível
+    // para os outros produtos da mesma oficina.
+    const handleCreateCategory = async (inputValue) => {
+        const name = inputValue.trim()
+        if (!name || !tenantId) return
+        const { data, error } = await supabase
+            .from('categories')
+            .insert([{ tenant_id: tenantId, name }])
+            .select()
+            .single()
+        if (error) {
+            alert('Erro ao criar categoria: ' + error.message)
+            return
+        }
+        setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setCurrentProduct(prev => ({ ...prev, category_id: data.id }))
+    }
+
+    const handleCreateBrand = async (inputValue) => {
+        const name = inputValue.trim()
+        if (!name || !tenantId) return
+        const { data, error } = await supabase
+            .from('brands')
+            .insert([{ tenant_id: tenantId, name }])
+            .select()
+            .single()
+        if (error) {
+            alert('Erro ao criar marca: ' + error.message)
+            return
+        }
+        setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
+        setCurrentProduct(prev => ({ ...prev, brand_id: data.id }))
     }
 
     const handleSave = async (e) => {
@@ -495,29 +531,47 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Categoria</label>
-                            <select
-                                value={currentProduct.category_id || ''}
-                                onChange={e => setCurrentProduct({ ...currentProduct, category_id: e.target.value })}
-                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                            >
-                                <option value="">Selecione uma categoria (opcional)</option>
-                                {categories.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
+                            <CreatableSelect
+                                instanceId="product-category"
+                                isClearable
+                                placeholder="Selecione ou digite para cadastrar..."
+                                formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
+                                noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
+                                options={categories.map(c => ({ value: c.id, label: c.name }))}
+                                value={
+                                    currentProduct.category_id
+                                        ? (() => {
+                                            const c = categories.find(c => c.id === currentProduct.category_id)
+                                            return c ? { value: c.id, label: c.name } : null
+                                        })()
+                                        : null
+                                }
+                                onChange={(opt) => setCurrentProduct({ ...currentProduct, category_id: opt ? opt.value : '' })}
+                                onCreateOption={handleCreateCategory}
+                                styles={customStyles}
+                            />
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Marca</label>
-                            <select
-                                value={currentProduct.brand_id || ''}
-                                onChange={e => setCurrentProduct({ ...currentProduct, brand_id: e.target.value })}
-                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                            >
-                                <option value="">Selecione uma marca (opcional)</option>
-                                {brands.map(b => (
-                                    <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                            </select>
+                            <CreatableSelect
+                                instanceId="product-brand"
+                                isClearable
+                                placeholder="Selecione ou digite para cadastrar..."
+                                formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
+                                noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
+                                options={brands.map(b => ({ value: b.id, label: b.name }))}
+                                value={
+                                    currentProduct.brand_id
+                                        ? (() => {
+                                            const b = brands.find(b => b.id === currentProduct.brand_id)
+                                            return b ? { value: b.id, label: b.name } : null
+                                        })()
+                                        : null
+                                }
+                                onChange={(opt) => setCurrentProduct({ ...currentProduct, brand_id: opt ? opt.value : '' })}
+                                onCreateOption={handleCreateBrand}
+                                styles={customStyles}
+                            />
                         </div>
                         <div className="md:col-span-2">
                             <label className="block text-sm font-medium text-gray-300 mb-1">Fornecedor</label>
