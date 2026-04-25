@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import Select from 'react-select'
 
 export default function POSForm() {
     const supabase = createClient()
@@ -10,17 +11,23 @@ export default function POSForm() {
     const { tenantId } = useAuth()
 
     const [products, setProducts] = useState([])
+    const [clients, setClients] = useState([])
     const [cart, setCart] = useState([])
     const [selectedProduct, setSelectedProduct] = useState('')
+    const [selectedClient, setSelectedClient] = useState(null)
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro')
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        const fetchProducts = async () => {
-            const { data } = await supabase.from('products').select('*').order('name')
-            setProducts(data || [])
+        const fetchData = async () => {
+            const [{ data: prods }, { data: cli }] = await Promise.all([
+                supabase.from('products').select('*').order('name'),
+                supabase.from('clients').select('id, name').order('name')
+            ])
+            setProducts(prods || [])
+            setClients(cli || [])
         }
-        fetchProducts()
+        fetchData()
     }, [])
 
     const handleAddToCart = () => {
@@ -60,9 +67,25 @@ export default function POSForm() {
         return cart.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
     }
 
-    const handleCheckout = async () => {
+    // status: 'paid' = venda finalizada; 'pending' = venda em aberto.
+    // Em ambos os casos o estoque é deduzido — o cliente saiu com o produto.
+    // A diferença está só no transactions.status. Vendas em aberto aparecem
+    // na aba "Em Aberto" do Movimento Diário pra serem finalizadas depois.
+    const handleCheckout = async (status = 'paid') => {
         if (cart.length === 0) return
-        if (!window.confirm(`Confirmar venda no valor de R$ ${calculateTotal().toFixed(2)}?`)) return
+
+        const total = calculateTotal()
+        const isPending = status === 'pending'
+
+        if (isPending && !selectedClient) {
+            alert('Para deixar a venda em aberto, selecione um cliente — assim sabemos quem deve.')
+            return
+        }
+
+        const confirmMsg = isPending
+            ? `Deixar venda EM ABERTO no valor de R$ ${total.toFixed(2)} para ${selectedClient.label}?\nO estoque será baixado e a venda ficará pendente até ser finalizada.`
+            : `Confirmar venda no valor de R$ ${total.toFixed(2)}?`
+        if (!window.confirm(confirmMsg)) return
 
         setLoading(true)
 
@@ -73,9 +96,7 @@ export default function POSForm() {
         }
 
         try {
-            const total = calculateTotal()
-
-            // 1. Deduct Stock
+            // 1. Deduct Stock (acontece em ambos os casos)
             for (const item of cart) {
                 const { data: prod } = await supabase
                     .from('products')
@@ -92,22 +113,27 @@ export default function POSForm() {
             }
 
             // 2. Register Transaction (Income)
+            const clientLabel = selectedClient ? ` - ${selectedClient.label}` : ''
+            const description = isPending
+                ? `Venda Balcão (PDV) - Em Aberto${clientLabel}`
+                : `Venda Balcão (PDV) - ${paymentMethod}${clientLabel}`
+
             const { error: txError } = await supabase.from('transactions').insert([{
                 tenant_id: tenantId,
-                description: `Venda Balcão (PDV) - ${paymentMethod}`,
+                description,
                 type: 'income',
                 category: 'Venda de Peças',
                 amount: total,
-                status: 'paid', // Instant pay
+                status,
                 date: new Date().toISOString(),
-                payment_method: paymentMethod
+                payment_method: isPending ? null : paymentMethod
             }])
 
             if (txError) throw txError
 
-            alert('Venda realizada com sucesso!')
+            alert(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
             setCart([])
-            // Refresh products explicitly or via page reload to get updated stock
+            setSelectedClient(null)
             window.location.reload()
         } catch (error) {
             console.error(error)
@@ -115,6 +141,29 @@ export default function POSForm() {
         } finally {
             setLoading(false)
         }
+    }
+
+    // Tema escuro do react-select alinhado com o resto do app
+    const selectStyles = {
+        control: (base, state) => ({
+            ...base,
+            backgroundColor: '#262626',
+            borderColor: state.isFocused ? '#ef4444' : '#404040',
+            color: '#ffffff',
+            minHeight: '38px',
+            boxShadow: 'none',
+            '&:hover': { borderColor: '#ef4444' }
+        }),
+        menu: (base) => ({ ...base, backgroundColor: '#171717', border: '1px solid #404040' }),
+        option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isFocused ? '#262626' : 'transparent',
+            color: '#ffffff',
+            cursor: 'pointer'
+        }),
+        singleValue: (base) => ({ ...base, color: '#ffffff' }),
+        input: (base) => ({ ...base, color: '#ffffff' }),
+        placeholder: (base) => ({ ...base, color: '#9ca3af' })
     }
 
     return (
@@ -208,7 +257,21 @@ export default function POSForm() {
                         <span className="text-white font-bold">{cart.length}</span>
                     </div>
 
-                    <div className="mt-8 mb-4">
+                    <div className="mt-6 mb-4">
+                        <label className="block text-sm text-gray-400 mb-2">Cliente (obrigatório se for fiado):</label>
+                        <Select
+                            instanceId="pdv-client"
+                            isClearable
+                            placeholder="Buscar cliente..."
+                            options={clients.map(c => ({ value: c.id, label: c.name }))}
+                            value={selectedClient}
+                            onChange={(opt) => setSelectedClient(opt)}
+                            noOptionsMessage={() => 'Nenhum cliente encontrado'}
+                            styles={selectStyles}
+                        />
+                    </div>
+
+                    <div className="mt-4 mb-4">
                         <label className="block text-sm text-gray-400 mb-2">Forma de Pagamento:</label>
                         <select
                             value={paymentMethod}
@@ -220,23 +283,35 @@ export default function POSForm() {
                             <option>Cartão de Crédito</option>
                             <option>Cartão de Débito</option>
                         </select>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                            Ignorado se a venda for deixada em aberto.
+                        </p>
                     </div>
                 </div>
 
                 <div>
-                    <div className="flex justify-between items-end border-t border-neutral-800 pt-4 mb-6">
-                        <span className="text-gray-400 text-lg">Total a Pagar:</span>
+                    <div className="flex justify-between items-end border-t border-neutral-800 pt-4 mb-4">
+                        <span className="text-gray-400 text-lg">Total:</span>
                         <span className="text-4xl font-black text-green-500">
                             R$ {calculateTotal().toFixed(2)}
                         </span>
                     </div>
 
                     <button
-                        onClick={handleCheckout}
+                        onClick={() => handleCheckout('paid')}
                         disabled={loading || cart.length === 0}
-                        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-4 rounded-xl font-black text-xl shadow-lg shadow-green-900/40 transition-all"
+                        className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-4 rounded-xl font-black text-xl shadow-lg shadow-green-900/40 transition-all mb-3"
                     >
-                        {loading ? 'Processando...' : 'FINALIZAR VENDA'}
+                        {loading ? 'Processando...' : 'FINALIZADA'}
+                    </button>
+
+                    <button
+                        onClick={() => handleCheckout('pending')}
+                        disabled={loading || cart.length === 0}
+                        className="w-full bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white py-3 rounded-xl font-bold text-base shadow-lg shadow-amber-900/40 transition-all"
+                        title="Estoque é baixado e a venda fica pendente. Pode ser finalizada depois na aba Em Aberto."
+                    >
+                        DEIXAR EM ABERTO
                     </button>
                 </div>
             </div>

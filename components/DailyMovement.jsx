@@ -6,7 +6,8 @@ import { useAuth } from '../context/AuthContext'
 import {
     ArrowRightLeft, TrendingUp, TrendingDown, DollarSign, Wallet,
     CreditCard, Landmark, PiggyBank, PlusCircle, Lock, Unlock,
-    CalendarDays, CheckCircle2, AlertTriangle, BarChart3, Activity
+    CalendarDays, CheckCircle2, AlertTriangle, BarChart3, Activity,
+    Clock, CheckCheck
 } from 'lucide-react'
 import MovementPeriodReport from './MovementPeriodReport'
 
@@ -29,6 +30,13 @@ export default function DailyMovement() {
 
     const [transactions, setTransactions] = useState([])
     const [loading, setLoading] = useState(true)
+
+    // Vendas em aberto (todas as datas) — usado pela aba "Em Aberto"
+    const [openSales, setOpenSales] = useState([])
+    const [openSalesLoading, setOpenSalesLoading] = useState(false)
+    // Pagamento ao finalizar uma venda em aberto
+    const [finalizingId, setFinalizingId] = useState(null)
+    const [finalizePaymentMethod, setFinalizePaymentMethod] = useState('Dinheiro')
 
     // Closure state for the selected date
     const [closure, setClosure] = useState(null)
@@ -95,6 +103,52 @@ export default function DailyMovement() {
     useEffect(() => {
         if (companyId) fetchMovement()
     }, [companyId, selectedDate])
+
+    // Carrega todas as vendas em aberto (todas as datas) — só roda quando a aba abre
+    const fetchOpenSales = async () => {
+        if (!companyId) return
+        setOpenSalesLoading(true)
+        const { data } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('tenant_id', companyId)
+            .eq('type', 'income')
+            .eq('status', 'pending')
+            .order('date', { ascending: false })
+        setOpenSales(data || [])
+        setOpenSalesLoading(false)
+    }
+
+    useEffect(() => {
+        if (activeTab === 'open' && companyId) fetchOpenSales()
+    }, [activeTab, companyId])
+
+    // Marca uma venda em aberto como finalizada — atualiza status e re-data pra now()
+    // (semântica dupla do transactions.date: created_at no insert, paid_at no update)
+    const handleFinalizeOpenSale = async (saleId) => {
+        if (!window.confirm(`Finalizar esta venda como paga via ${finalizePaymentMethod}?`)) return
+        setFinalizingId(saleId)
+        const { error } = await supabase
+            .from('transactions')
+            .update({
+                status: 'paid',
+                date: new Date().toISOString(),
+                payment_method: finalizePaymentMethod
+            })
+            .eq('id', saleId)
+        if (error) {
+            alert('Erro ao finalizar venda: ' + error.message)
+        } else {
+            await fetchOpenSales()
+            // Se a aba diária estiver olhando hoje, atualiza pra refletir nos totais
+            if (isToday) await fetchMovement()
+        }
+        setFinalizingId(null)
+    }
+
+    // Vendas em aberto do dia selecionado — usado no modal de fechamento como aviso
+    const openSalesOfSelectedDay = transactions.filter(t => t.type === 'income' && t.status === 'pending')
+    const openSalesOfSelectedDayTotal = openSalesOfSelectedDay.reduce((acc, t) => acc + Number(t.amount), 0)
 
     const handleAddExpense = async (e) => {
         e.preventDefault()
@@ -230,10 +284,89 @@ export default function DailyMovement() {
                 >
                     <BarChart3 className="w-4 h-4" /> Histórico & Período
                 </button>
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('open')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'open'
+                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                        : 'text-gray-400 hover:text-white'
+                        }`}
+                >
+                    <Clock className="w-4 h-4" /> Em Aberto
+                </button>
             </div>
 
             {activeTab === 'period' ? (
                 <MovementPeriodReport onSelectDay={handleSelectDayFromPeriod} />
+            ) : activeTab === 'open' ? (
+                <div className="space-y-4">
+                    <div>
+                        <h1 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+                            Vendas em Aberto
+                            <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-400 text-xs font-bold uppercase px-2 py-1 rounded-full border border-amber-500/30">
+                                {openSales.length} pendente{openSales.length === 1 ? '' : 's'}
+                            </span>
+                        </h1>
+                        <p className="text-gray-400 mt-1">
+                            Vendas com pagamento pendente. Selecione a forma de pagamento e clique em <strong>Finalizar</strong> quando o cliente pagar.
+                        </p>
+                    </div>
+
+                    <div className="bg-black rounded-2xl border border-neutral-800 p-6">
+                        <div className="flex flex-col md:flex-row md:items-center gap-3 mb-5 pb-4 border-b border-neutral-800">
+                            <span className="text-sm text-gray-400">Forma de pagamento ao finalizar:</span>
+                            <select
+                                value={finalizePaymentMethod}
+                                onChange={(e) => setFinalizePaymentMethod(e.target.value)}
+                                className="bg-neutral-900 border border-neutral-700 text-white text-sm rounded-lg p-2"
+                            >
+                                <option>Dinheiro</option>
+                                <option>PIX</option>
+                                <option>Cartão de Crédito</option>
+                                <option>Cartão de Débito</option>
+                            </select>
+                            <span className="md:ml-auto text-sm text-gray-400">
+                                Total em aberto:{' '}
+                                <strong className="text-amber-300">
+                                    {openSales.reduce((a, t) => a + Number(t.amount), 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                </strong>
+                            </span>
+                        </div>
+
+                        {openSalesLoading ? (
+                            <div className="text-center py-10 text-gray-400 animate-pulse">Carregando vendas em aberto...</div>
+                        ) : openSales.length === 0 ? (
+                            <div className="text-center py-10 text-gray-500">
+                                <CheckCheck className="w-10 h-10 mx-auto mb-2 text-emerald-500/60" />
+                                Nenhuma venda em aberto. Tudo finalizado!
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {openSales.map(sale => (
+                                    <div key={sale.id} className="flex flex-col md:flex-row md:items-center gap-3 bg-neutral-900 p-4 rounded-xl border border-amber-900/30">
+                                        <div className="flex-1">
+                                            <p className="text-sm font-bold text-gray-200">{sale.description}</p>
+                                            <p className="text-xs text-gray-500 mt-1">
+                                                Aberta em {new Date(sale.date).toLocaleString('pt-BR')}
+                                            </p>
+                                        </div>
+                                        <span className="text-amber-300 font-black text-lg whitespace-nowrap">
+                                            {Number(sale.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        </span>
+                                        <button
+                                            onClick={() => handleFinalizeOpenSale(sale.id)}
+                                            disabled={finalizingId === sale.id}
+                                            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition whitespace-nowrap"
+                                        >
+                                            <CheckCheck className="w-4 h-4" />
+                                            {finalizingId === sale.id ? 'Finalizando...' : 'Finalizar'}
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
             ) : loading ? (
                 <div className="p-8 text-center text-gray-400 animate-pulse">Carregando movimento do dia...</div>
             ) : (
@@ -516,6 +649,28 @@ export default function DailyMovement() {
                                     </p>
                                 </div>
                             </div>
+
+                            {openSalesOfSelectedDay.length > 0 && (
+                                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+                                    <Clock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                                    <div className="text-sm flex-1">
+                                        <p className="text-amber-300 font-bold">
+                                            {openSalesOfSelectedDay.length} venda{openSalesOfSelectedDay.length === 1 ? '' : 's'} em aberto neste dia
+                                            {' '}({openSalesOfSelectedDayTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                                        </p>
+                                        <p className="text-amber-200/80 mt-1">
+                                            Essas vendas <strong>não entram</strong> no fechamento — ficam pendentes para finalizar depois na aba <strong>Em Aberto</strong>.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setIsCloseModalOpen(false); setActiveTab('open') }}
+                                            className="text-amber-300 hover:text-amber-200 underline text-xs mt-2"
+                                        >
+                                            Ver vendas em aberto agora →
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             <div>
                                 <label className="block text-sm text-gray-400 mb-1">Observação (opcional)</label>
