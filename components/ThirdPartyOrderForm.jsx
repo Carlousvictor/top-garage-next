@@ -69,57 +69,34 @@ export default function ThirdPartyOrderForm({ order }) {
         e.preventDefault()
         setLoading(true)
 
-        if (!tenantId) {
-            alert('Erro: Empresa não identificada.')
-            setLoading(false)
-            return
-        }
-
         try {
             const total = calculateTotal()
 
-            const orderData = {
-                tenant_id: tenantId,
-                status: 'Em Terceiros', // Default status or whatever makes sense
-                is_third_party: true,
-                vehicle_plate: plate,
-                vehicle_brand: brand,
-                vehicle_model: model,
-                observation: observation,
-                total
-            }
-
-            let orderId = order?.id
-
-            if (orderId) {
-                await supabase.from('service_orders').update(orderData).eq('id', orderId)
-            } else {
-                const { data, error } = await supabase.from('service_orders').insert([orderData]).select().single()
-                if (error) throw error
-                orderId = data.id
-            }
-
-            if (orderId) {
-                if (order?.id) {
-                    await supabase.from('service_order_items').delete().eq('service_order_id', orderId)
-                }
-
-                if (items.length > 0) {
-                    const itemsToInsert = items.map(item => ({
-                        tenant_id: tenantId,
-                        service_order_id: orderId,
-                        product_id: null, // Strictly manual
-                        service_id: null, // Strictly manual
+            const res = await fetch('/api/service-orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    id: order?.id || undefined,
+                    status: 'Em Terceiros',
+                    is_third_party: true,
+                    vehicle_plate: plate,
+                    vehicle_brand: brand,
+                    vehicle_model: model,
+                    observation,
+                    total,
+                    service_date_iso: new Date().toISOString(),
+                    items: items.map(item => ({
                         description: item.description,
                         quantity: item.quantity,
                         unit_price: item.unit_price,
-                        type: 'manual'
+                        type: 'manual',
                     }))
+                })
+            })
 
-                    const { error: itemsError } = await supabase.from('service_order_items').insert(itemsToInsert)
-                    if (itemsError) throw itemsError
-                }
-            }
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao salvar OS.')
 
             onSave()
         } catch (error) {

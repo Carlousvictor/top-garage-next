@@ -245,71 +245,44 @@ export default function ServiceOrderForm({ order }) {
         e.preventDefault()
         setLoading(true)
 
-        if (!companyId) {
-            alert('Erro: Empresa não identificada. Faça login novamente.')
-            setLoading(false)
-            return
-        }
-
         try {
             const total = calculateTotal()
-
-            // Data da OS em ISO timestamp (meio-dia local pra evitar TZ shift).
-            // Vai pro created_at em insert e em update — assim editar a data
-            // de uma OS retroativa também atualiza a posição na listagem.
             const serviceDateISO = (() => {
                 const [y, m, d] = serviceDate.split('-').map(Number)
                 return new Date(y, m - 1, d, 12, 0, 0).toISOString()
             })()
 
-            // 1. Upsert Order
-            const orderData = {
-                tenant_id: companyId,
-                client_id: clientId || null,
-                vehicle_plate: plate,
-                vehicle_brand: brand,
-                vehicle_model: model,
-                status,
-                observation,
-                is_estimate: isEstimate,
-                next_revision_date: nextRevisionDate || null,
-                current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
-                next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
-                total,
-                created_at: serviceDateISO
-            }
-
-            let orderId = order?.id
-
-            if (orderId) {
-                await supabase.from('service_orders').update(orderData).eq('id', orderId)
-            } else {
-                const { data, error } = await supabase.from('service_orders').insert([orderData]).select().single()
-                if (error) throw error
-                orderId = data.id
-            }
-
-            if (orderId) {
-                if (order?.id) {
-                    await supabase.from('service_order_items').delete().eq('service_order_id', orderId)
-                }
-
-                if (items.length > 0) {
-                    const itemsToInsert = items.map(item => ({
-                        tenant_id: companyId,
-                        service_order_id: orderId,
+            const res = await fetch('/api/service-orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    id: order?.id || undefined,
+                    client_id: clientId || null,
+                    vehicle_plate: plate,
+                    vehicle_brand: brand,
+                    vehicle_model: model,
+                    status,
+                    observation,
+                    is_estimate: isEstimate,
+                    next_revision_date: nextRevisionDate || null,
+                    current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
+                    next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
+                    total,
+                    service_date_iso: serviceDateISO,
+                    items: items.map(item => ({
                         product_id: item.product_id || null,
                         service_id: item.service_id || null,
                         description: item.description,
                         quantity: item.quantity,
                         unit_price: item.unit_price,
-                        type: item.type
+                        type: item.type,
                     }))
+                })
+            })
 
-                    const { error: itemsError } = await supabase.from('service_order_items').insert(itemsToInsert)
-                    if (itemsError) throw itemsError
-                }
-            }
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao salvar OS.')
 
             onSave()
         } catch (error) {
@@ -321,9 +294,6 @@ export default function ServiceOrderForm({ order }) {
     }
 
     const handleFinish = async () => {
-        // Pré-calcula a data pra usar tanto no UPDATE da OS quanto na transação.
-        // Garante consistência: a OS e o lançamento financeiro caem na MESMA data,
-        // mesmo se for retroativa.
         const serviceDateISO = (() => {
             const [y, m, d] = serviceDate.split('-').map(Number)
             return new Date(y, m - 1, d, 12, 0, 0).toISOString()
@@ -337,62 +307,30 @@ export default function ServiceOrderForm({ order }) {
         if (!window.confirm(confirmMsg)) return
         setLoading(true)
 
-        if (!companyId) {
-            alert('Erro: Empresa não identificada.')
-            setLoading(false)
-            return
-        }
-
         try {
             const total = calculateTotal()
 
-            // Inclui created_at no UPDATE pra garantir que a data da OS fique
-            // alinhada com a data da transação — mesmo se a serviceDate foi
-            // alterada no form sem clicar em "Salvar OS" antes.
-            const { error: osError } = await supabase
-                .from('service_orders')
-                .update({ status: 'Concluido', total, created_at: serviceDateISO })
-                .eq('id', order.id)
+            const res = await fetch('/api/service-orders/finish', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    order_id: order.id,
+                    plate,
+                    total,
+                    service_date_iso: serviceDateISO,
+                    is_retroactive: isRetroactive,
+                    payment_method: paymentMethod,
+                    items: items.map(item => ({
+                        type: item.type,
+                        product_id: item.product_id || null,
+                        quantity: item.quantity,
+                    }))
+                })
+            })
 
-            if (osError) throw osError
-
-            // Decremento de estoque APENAS pra OS de hoje. Em OS retroativa, os
-            // itens já foram consumidos no passado — o estoque atual reflete o
-            // presente, então não devemos abater de novo. Isso é crítico pra
-            // import de histórico funcionar sem zerar o estoque atual.
-            if (!isRetroactive) {
-                for (const item of items) {
-                    if (item.type === 'product' && item.product_id) {
-                        const { data: prod } = await supabase
-                            .from('products')
-                            .select('quantity')
-                            .eq('id', item.product_id)
-                            .single()
-
-                        if (prod) {
-                            await supabase
-                                .from('products')
-                                .update({ quantity: prod.quantity - item.quantity })
-                                .eq('id', item.product_id)
-                        }
-                    }
-                }
-            }
-
-            // Mesma data usada acima — receita financeira na data da OS.
-            // Em OS retroativa cai no mês correto dos relatórios; em OS de
-            // hoje, é equivalente a now() (12:00 local).
-            await supabase.from('transactions').insert([{
-                tenant_id: companyId,
-                description: `Receita OS #${order.id} - Placa ${plate}`,
-                type: 'income',
-                category: 'Service',
-                amount: total,
-                related_os_id: order.id,
-                status: 'paid',
-                payment_method: paymentMethod,
-                date: serviceDateISO
-            }])
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao finalizar OS.')
 
             alert('OS Finalizada com sucesso!')
             onSave()
