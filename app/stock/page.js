@@ -16,9 +16,14 @@ export default async function StockPage() {
     const tenantId = user ? await getTenantId(supabase, user) : null
 
     const [productsRes, suppliersRes, categoriesRes, brandsRes] = await Promise.all([
-        supabase.from('products')
-            .select('*, suppliers(name), categories(name), brands(name)')
-            .order('name'),
+        tenantId
+            ? supabase.from('products')
+                .select('*, suppliers(name), categories(name), brands(name)')
+                .eq('tenant_id', tenantId)
+                .order('name')
+            : supabase.from('products')
+                .select('*, suppliers(name), categories(name), brands(name)')
+                .order('name'),
         supabase.from('suppliers').select('*').order('name'),
         tenantId
             ? supabase.from('categories').select('*').eq('tenant_id', tenantId).order('name')
