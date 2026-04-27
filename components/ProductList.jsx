@@ -145,43 +145,59 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // A categoria nasce ligada ao tenant atual e fica imediatamente disponível
     // para os outros produtos da mesma oficina.
     const handleCreateCategory = async (inputValue) => {
-        const name = inputValue.trim()
-        if (!name) return
-        const res = await fetch('/api/categories', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ name })
-        })
-        const json = await res.json()
-        if (!res.ok) {
-            setCategoryInput(inputValue)
-            setSaveError('Erro ao criar categoria: ' + (json.error || res.statusText))
-            return
+        try {
+            const name = inputValue.trim()
+            if (!name) return
+            const res = await fetch('/api/categories', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ name })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setCategoryInput(inputValue)
+                setSaveError('Erro ao criar categoria: ' + (json.error || res.statusText))
+                return
+            }
+            if (!json.category?.id) {
+                setSaveError('Categoria criada mas API não retornou o ID. Resposta: ' + JSON.stringify(json))
+                return
+            }
+            setCategoryInput('')
+            setCategories(json.categories || [...categories, json.category].sort((a, b) => a.name.localeCompare(b.name)))
+            setCurrentProduct(prev => ({ ...prev, category_id: json.category.id }))
+        } catch (err) {
+            setSaveError('Erro inesperado ao criar categoria: ' + err.message)
         }
-        setCategoryInput('')
-        setCategories(json.categories || [...categories, json.category].sort((a, b) => a.name.localeCompare(b.name)))
-        setCurrentProduct(prev => ({ ...prev, category_id: json.category.id }))
     }
 
     const handleCreateBrand = async (inputValue) => {
-        const name = inputValue.trim()
-        if (!name) return
-        const res = await fetch('/api/brands', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ name })
-        })
-        const json = await res.json()
-        if (!res.ok) {
-            setBrandInput(inputValue)
-            setSaveError('Erro ao criar marca: ' + (json.error || res.statusText))
-            return
+        try {
+            const name = inputValue.trim()
+            if (!name) return
+            const res = await fetch('/api/brands', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ name })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setBrandInput(inputValue)
+                setSaveError('Erro ao criar marca: ' + (json.error || res.statusText))
+                return
+            }
+            if (!json.brand?.id) {
+                setSaveError('Marca criada mas API não retornou o ID. Resposta: ' + JSON.stringify(json))
+                return
+            }
+            setBrandInput('')
+            setBrands(json.brands || [...brands, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
+            setCurrentProduct(prev => ({ ...prev, brand_id: json.brand.id }))
+        } catch (err) {
+            setSaveError('Erro inesperado ao criar marca: ' + err.message)
         }
-        setBrandInput('')
-        setBrands(json.brands || [...brands, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
-        setCurrentProduct(prev => ({ ...prev, brand_id: json.brand.id }))
     }
 
     const handleSave = async (e) => {
