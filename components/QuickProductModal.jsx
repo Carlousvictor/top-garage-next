@@ -164,41 +164,45 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         }
 
         setSaving(true)
-        const { data, error } = await supabase
-            .from('products')
-            .insert([{
-                tenant_id: tenantId,
-                name: name.trim(),
-                sku: sku.trim() || null,
-                cost_price: parseCurrency(costPrice) || 0,
-                selling_price: sellingNum,
-                profit_margin_percent: parseFloat(margin) || 0,
-                quantity: parseInt(quantity) || 0,
-                min_quantity: parseInt(minQuantity) || 0,
-                category_id: categoryId || null,
-                brand_id: brandId || null
-            }])
-            .select()
-            .single()
+        try {
+            const { data, error } = await supabase
+                .from('products')
+                .insert([{
+                    tenant_id: tenantId,
+                    name: name.trim(),
+                    sku: sku.trim() || null,
+                    cost_price: parseCurrency(costPrice) || 0,
+                    selling_price: sellingNum,
+                    profit_margin_percent: parseFloat(margin) || 0,
+                    quantity: parseInt(quantity) || 0,
+                    min_quantity: parseInt(minQuantity) || 0,
+                    category_id: categoryId || null,
+                    brand_id: brandId || null
+                }])
+                .select()
+                .single()
 
-        setSaving(false)
+            if (error) {
+                setErrorMsg('Erro ao salvar produto: ' + error.message)
+                return
+            }
 
-        if (error) {
-            setErrorMsg('Erro ao salvar produto: ' + error.message)
-            return
+            onCreated(data)
+            // Reset pra próximo uso
+            setName('')
+            setSku('')
+            setCostPrice('')
+            setMargin('')
+            setSellingPrice('')
+            setQuantity('0')
+            setMinQuantity('0')
+            setCategoryId('')
+            setBrandId('')
+        } catch (err) {
+            setErrorMsg('Erro inesperado ao salvar: ' + err.message)
+        } finally {
+            setSaving(false)
         }
-
-        onCreated(data)
-        // Reset pra próximo uso
-        setName('')
-        setSku('')
-        setCostPrice('')
-        setMargin('')
-        setSellingPrice('')
-        setQuantity('0')
-        setMinQuantity('0')
-        setCategoryId('')
-        setBrandId('')
     }
 
     if (!isOpen) return null

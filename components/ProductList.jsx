@@ -25,6 +25,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Mesmo critério usado em app/page.js: quantity <= (min_quantity || 0).
     const [lowStockOnly, setLowStockOnly] = useState(searchParams.get('filter') === 'low-stock')
     const [isEditing, setIsEditing] = useState(false)
+    const [loading, setLoading] = useState(false)
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
@@ -677,9 +678,10 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     <div className="flex gap-4 pt-6">
                         <button
                             type="submit"
-                            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium"
+                            disabled={loading}
+                            className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg font-medium"
                         >
-                            Salvar
+                            {loading ? 'Salvando...' : 'Salvar'}
                         </button>
                         <button
                             type="button"
