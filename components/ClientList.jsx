@@ -236,10 +236,9 @@ export default function ClientList({ initialClients }) {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Telefone / WhatsApp</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Telefone / WhatsApp (Opcional)</label>
                             <input
                                 type="text"
-                                required
                                 placeholder="(21) 99999-9999"
                                 value={currentClient.phone || ''}
                                 onChange={e => setCurrentClient({ ...currentClient, phone: e.target.value })}

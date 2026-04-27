@@ -166,7 +166,6 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('Informe um preço de venda válido.')
             return
         }
-        if (authLoading) return
         if (!tenantId) {
             setErrorMsg('Empresa não identificada. Recarregue a página e tente novamente.')
             return
@@ -384,10 +383,10 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                         </button>
                         <button
                             type="submit"
-                            disabled={saving || authLoading}
+                            disabled={saving}
                             className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-lg shadow-red-900/20 transition"
                         >
-                            {authLoading ? 'Aguardando...' : saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
+                            {saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
                         </button>
                     </div>
                 </form>

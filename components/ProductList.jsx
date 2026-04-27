@@ -183,9 +183,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
 
     const handleSave = async (e) => {
         e.preventDefault()
-        if (authLoading) return
         if (!tenantId) {
-            alert('Erro: Empresa não identificada. Recarregue a página e tente novamente.')
+            alert('Empresa não identificada. Recarregue a página e tente novamente.')
             return
         }
         setLoading(true)
@@ -696,10 +695,10 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     <div className="flex gap-4 pt-6">
                         <button
                             type="submit"
-                            disabled={loading || authLoading}
+                            disabled={loading}
                             className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg font-medium"
                         >
-                            {authLoading ? 'Aguardando...' : loading ? 'Salvando...' : 'Salvar'}
+                            {loading ? 'Salvando...' : 'Salvar'}
                         </button>
                         <button
                             type="button"
