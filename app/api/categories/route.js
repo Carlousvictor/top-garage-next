@@ -66,5 +66,7 @@ export async function POST(request) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
 
-    return NextResponse.json({ category: data })
+    // Retorna a lista completa para que o cliente atualize o state sem re-fetch separado
+    const { data: all } = await supabase.from('categories').select('*').eq('tenant_id', tenantId).order('name')
+    return NextResponse.json({ category: data, categories: all || [] })
 }

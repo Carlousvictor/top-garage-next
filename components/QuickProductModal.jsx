@@ -93,7 +93,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             return
         }
         setCategoryInput('')
-        setCategories(prev => [...prev, json.category].sort((a, b) => a.name.localeCompare(b.name)))
+        setCategories(json.categories || [...(categories), json.category].sort((a, b) => a.name.localeCompare(b.name)))
         setCategoryId(json.category.id)
     }
 
@@ -113,7 +113,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             return
         }
         setBrandInput('')
-        setBrands(prev => [...prev, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
+        setBrands(json.brands || [...(brands), json.brand].sort((a, b) => a.name.localeCompare(b.name)))
         setBrandId(json.brand.id)
     }
 

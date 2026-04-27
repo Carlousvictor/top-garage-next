@@ -160,7 +160,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             return
         }
         setCategoryInput('')
-        setCategories(prev => [...prev, json.category].sort((a, b) => a.name.localeCompare(b.name)))
+        setCategories(json.categories || [...categories, json.category].sort((a, b) => a.name.localeCompare(b.name)))
         setCurrentProduct(prev => ({ ...prev, category_id: json.category.id }))
     }
 
@@ -180,7 +180,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             return
         }
         setBrandInput('')
-        setBrands(prev => [...prev, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
+        setBrands(json.brands || [...brands, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
         setCurrentProduct(prev => ({ ...prev, brand_id: json.brand.id }))
     }
 
