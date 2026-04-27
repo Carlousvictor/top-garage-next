@@ -13,6 +13,26 @@ export async function GET(request) {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
+    // Derive tenant_id so the query satisfies RLS policies that check tenant scope
+    let tenantId = null
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .single()
+    tenantId = profile?.tenant_id
+
+    if (!tenantId) {
+        const { data: profileById } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single()
+        tenantId = profileById?.tenant_id
+    }
+
+    // Query vehicles for this client. RLS on the vehicles table (if enabled)
+    // will further scope results to the authenticated tenant automatically.
     const { data: vehicles, error } = await supabase
         .from('vehicles')
         .select('*')

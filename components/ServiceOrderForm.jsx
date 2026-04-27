@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
@@ -97,35 +97,55 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false)
     const [serviceModalInitialName, setServiceModalInitialName] = useState('')
     const [serviceSearchInput, setServiceSearchInput] = useState('')
-    // Veículo "ativo" — preenchido pelo auto-fill (1 veículo) ou pelo picker (2+).
-    // Permite renderizar a card readonly com info completa (combustível, cilindrada, etc).
     const [selectedVehicle, setSelectedVehicle] = useState(null)
-
+    const [vehiclesLoading, setVehiclesLoading] = useState(false)
+    // Tracks whether this is the initial mount (edit mode) vs a user-driven client change.
+    const vehiclesInitialized = useRef(false)
 
     useEffect(() => {
         if (!clientId) {
             setClientVehicles([])
             setSelectedVehicle(null)
+            vehiclesInitialized.current = false
             return
         }
-        const fetchVehicles = async () => {
-            const res = await fetch(`/api/vehicles/by-client?client_id=${clientId}`, { credentials: 'include' })
-            const json = await res.json()
-            const vehicles = json.vehicles || []
-            setClientVehicles(vehicles)
-            if (vehicles.length === 1 && !plate) {
-                const v = vehicles[0]
-                setPlate(v.plate)
-                setBrand(v.brand || '')
-                setModel(v.model || '')
-                setSelectedVehicle(v)
-            }
-            if (plate && vehicles.length > 0) {
-                const match = vehicles.find(v => v.plate?.toUpperCase() === plate.toUpperCase())
-                if (match) setSelectedVehicle(match)
-            }
+
+        const isFirstLoad = !vehiclesInitialized.current
+        vehiclesInitialized.current = true
+
+        // When the user CHANGES the client (not first mount), clear previous vehicle data
+        // so the new client's vehicle auto-fills cleanly.
+        if (!isFirstLoad) {
+            setPlate('')
+            setBrand('')
+            setModel('')
+            setSelectedVehicle(null)
         }
-        fetchVehicles()
+
+        setVehiclesLoading(true)
+        fetch(`/api/vehicles/by-client?client_id=${clientId}`, { credentials: 'include' })
+            .then(r => r.json())
+            .then(json => {
+                const vehicles = json.vehicles || []
+                setClientVehicles(vehicles)
+
+                if (vehicles.length === 1) {
+                    // Always auto-fill when only one vehicle exists
+                    const v = vehicles[0]
+                    setPlate(v.plate)
+                    setBrand(v.brand || '')
+                    setModel(v.model || '')
+                    setSelectedVehicle(v)
+                } else if (isFirstLoad && vehicles.length > 1 && order?.vehicle_plate) {
+                    // Edit mode with multiple vehicles: highlight the one already on the order
+                    const match = vehicles.find(v =>
+                        v.plate?.toUpperCase() === order.vehicle_plate.toUpperCase()
+                    )
+                    if (match) setSelectedVehicle(match)
+                }
+            })
+            .catch(() => { /* silently ignore network errors */ })
+            .finally(() => setVehiclesLoading(false))
     }, [clientId])
 
     // Adds catalog item (product/service) from a selected react-select option.
@@ -372,25 +392,53 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                             </select>
                         </div>
 
-                        {clientVehicles.length > 1 && (
-                            <div className="md:col-span-2 bg-neutral-950 p-3 rounded border border-blue-900/30">
-                                <label className="block text-xs font-medium text-blue-400 mb-2">Cliente tem {clientVehicles.length} veículos. Selecione qual:</label>
+                        {/* Vehicle loading indicator */}
+                        {vehiclesLoading && clientId && (
+                            <div className="md:col-span-2 text-xs text-gray-400 animate-pulse py-1">
+                                Buscando veículos do cliente...
+                            </div>
+                        )}
+
+                        {/* No vehicles registered */}
+                        {!vehiclesLoading && clientId && clientVehicles.length === 0 && (
+                            <div className="md:col-span-2 bg-amber-500/5 border border-amber-500/20 rounded-lg px-4 py-2 text-xs text-amber-300 flex items-center gap-2">
+                                <CarFront className="w-4 h-4 shrink-0" />
+                                Nenhum veículo cadastrado para este cliente. Use <strong>"Adicionar veículo"</strong> para registrar.
+                            </div>
+                        )}
+
+                        {/* Multiple vehicles picker */}
+                        {!vehiclesLoading && clientVehicles.length > 1 && (
+                            <div className="md:col-span-2 bg-neutral-950 p-3 rounded-lg border border-blue-900/30">
+                                <label className="block text-xs font-medium text-blue-400 mb-2">
+                                    Cliente tem {clientVehicles.length} veículos — selecione qual será atendido:
+                                </label>
                                 <div className="flex flex-wrap gap-2">
-                                    {clientVehicles.map(v => (
-                                        <button
-                                            key={v.id}
-                                            type="button"
-                                            onClick={() => {
-                                                setPlate(v.plate)
-                                                setBrand(v.brand || '')
-                                                setModel(v.model || '')
-                                                setSelectedVehicle(v)
-                                            }}
-                                            className="bg-neutral-800 hover:bg-neutral-700 text-gray-200 px-3 py-1.5 rounded text-sm border border-neutral-700 transition"
-                                        >
-                                            {v.plate} - {v.brand} {v.model}
-                                        </button>
-                                    ))}
+                                    {clientVehicles.map(v => {
+                                        const isActive = selectedVehicle?.id === v.id
+                                        return (
+                                            <button
+                                                key={v.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setPlate(v.plate)
+                                                    setBrand(v.brand || '')
+                                                    setModel(v.model || '')
+                                                    setSelectedVehicle(v)
+                                                }}
+                                                className={`px-3 py-2 rounded-lg text-sm border transition font-medium ${
+                                                    isActive
+                                                        ? 'bg-blue-600 border-blue-500 text-white'
+                                                        : 'bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-gray-200'
+                                                }`}
+                                            >
+                                                <span className="font-mono font-bold">{v.plate}</span>
+                                                {(v.brand || v.model) && (
+                                                    <span className="ml-2 text-xs opacity-75">{[v.brand, v.model].filter(Boolean).join(' ')}</span>
+                                                )}
+                                            </button>
+                                        )
+                                    })}
                                 </div>
                             </div>
                         )}
