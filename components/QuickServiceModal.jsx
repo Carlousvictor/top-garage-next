@@ -47,9 +47,10 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('Informe o nome do serviço.')
             return
         }
+        // Preço opcional: vazio/zero é aceito; operador define o valor na OS.
         const priceNum = parseCurrency(price)
-        if (priceNum <= 0) {
-            setErrorMsg('Informe um preço válido.')
+        if (priceNum < 0) {
+            setErrorMsg('Preço não pode ser negativo.')
             return
         }
         if (!tenantId) {
@@ -114,7 +115,7 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
 
                     <div>
                         <label className="block text-sm text-gray-300 mb-1">
-                            Preço (R$) <span className="text-red-500">*</span>
+                            Preço (R$) <span className="text-gray-500 text-xs">(opcional)</span>
                         </label>
                         <input
                             type="text"
@@ -123,6 +124,7 @@ export default function QuickServiceModal({ isOpen, onClose, onCreated, initialN
                             className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
                             placeholder="R$ 0,00"
                         />
+                        <p className="text-[11px] text-gray-500 mt-1">Em branco = define o valor depois, direto na OS.</p>
                     </div>
 
                     <div>

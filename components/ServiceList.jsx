@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Select from 'react-select'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
@@ -31,6 +32,7 @@ const customStyles = {
 export default function ServiceList({ initialServices }) {
     const supabase = createClient()
     const { companyId } = useAuth()
+    const router = useRouter()
 
     const [services, setServices] = useState(initialServices || [])
     const [isEditing, setIsEditing] = useState(false)
@@ -50,11 +52,9 @@ export default function ServiceList({ initialServices }) {
 
     const handleSave = async (e) => {
         e.preventDefault()
-        setLoading(true)
 
         if (!companyId) {
             alert('Erro: Empresa não identificada.')
-            setLoading(false)
             return
         }
 
@@ -62,7 +62,8 @@ export default function ServiceList({ initialServices }) {
             const payload = {
                 tenant_id: companyId,
                 name: currentService.name,
-                price: parseFloat(currentService.price),
+                // Preço é opcional no cadastro; vazio vira 0 para o operador definir o valor na OS.
+                price: parseFloat(currentService.price) || 0,
                 description: currentService.description
             }
 
@@ -74,11 +75,9 @@ export default function ServiceList({ initialServices }) {
             }
 
             setIsEditing(false)
-            fetchServices()
+            router.refresh()
         } catch (error) {
             alert('Erro ao salvar serviço: ' + error.message)
-        } finally {
-            setLoading(false)
         }
     }
 
@@ -200,15 +199,17 @@ export default function ServiceList({ initialServices }) {
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Preço (R$)</label>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Preço (R$) <span className="text-gray-500 text-xs">(opcional)</span></label>
                             <input
                                 type="number"
                                 step="0.01"
-                                required
+                                min="0"
+                                placeholder="0,00"
                                 value={currentService.price}
                                 onChange={e => setCurrentService({ ...currentService, price: e.target.value })}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-72 p-2.5"
                             />
+                            <p className="text-xs text-gray-500 mt-1">Pode deixar em branco e definir o valor na hora de adicionar à OS.</p>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Descrição (Opcional)</label>
