@@ -9,31 +9,56 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
+    // Derive tenant_id server-side — never trust what the client sends
+    let tenantId = null
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('user_id', user.id)
+        .single()
+
+    tenantId = profile?.tenant_id
+
+    if (!tenantId) {
+        // Fallback: some setups store profile with id = user.id
+        const { data: profileById } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single()
+        tenantId = profileById?.tenant_id
+    }
+
+    if (!tenantId) {
+        return NextResponse.json({ error: 'Empresa não encontrada para este usuário.' }, { status: 403 })
+    }
+
     const body = await request.json()
-    const { id, ...fields } = body
+    // Strip client-supplied id and tenant_id — we control both
+    const { id, tenant_id: _ignored, ...fields } = body
 
     if (id) {
-        // UPDATE
-        const { tenant_id: _tid, ...updatePayload } = fields
+        // UPDATE — only allow touching rows that belong to this tenant
         const { error } = await supabase
             .from('products')
-            .update(updatePayload)
+            .update(fields)
             .eq('id', id)
+            .eq('tenant_id', tenantId)
 
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     } else {
-        // INSERT
+        // INSERT — always stamp with server-derived tenant_id
         const { error } = await supabase
             .from('products')
-            .insert([fields])
+            .insert([{ ...fields, tenant_id: tenantId }])
 
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    // Retorna lista atualizada com joins
     const { data: products, error: listError } = await supabase
         .from('products')
         .select('*, suppliers(name), categories(name), brands(name)')
+        .eq('tenant_id', tenantId)
         .order('name')
 
     if (listError) return NextResponse.json({ error: listError.message }, { status: 400 })

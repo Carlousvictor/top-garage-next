@@ -78,51 +78,44 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         load()
     }, [isOpen, catalogLoaded, tenantId])
 
-    // Cria categoria sob demanda — mesmo padrão de ProductList.handleCreateCategory.
     const handleCreateCategory = async (input) => {
         const newName = input.trim()
         if (!newName) return
-        if (!tenantId) {
+        const res = await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name: newName })
+        })
+        const json = await res.json()
+        if (!res.ok) {
             setCategoryInput(input)
-            setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
-            return
-        }
-        const { data, error } = await supabase
-            .from('categories')
-            .insert([{ tenant_id: tenantId, name: newName }])
-            .select()
-            .single()
-        if (error) {
-            setCategoryInput(input)
-            setErrorMsg('Erro ao criar categoria: ' + error.message)
+            setErrorMsg('Erro ao criar categoria: ' + (json.error || res.statusText))
             return
         }
         setCategoryInput('')
-        setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-        setCategoryId(data.id)
+        setCategories(prev => [...prev, json.category].sort((a, b) => a.name.localeCompare(b.name)))
+        setCategoryId(json.category.id)
     }
 
     const handleCreateBrand = async (input) => {
         const newName = input.trim()
         if (!newName) return
-        if (!tenantId) {
+        const res = await fetch('/api/brands', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name: newName })
+        })
+        const json = await res.json()
+        if (!res.ok) {
             setBrandInput(input)
-            setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
-            return
-        }
-        const { data, error } = await supabase
-            .from('brands')
-            .insert([{ tenant_id: tenantId, name: newName }])
-            .select()
-            .single()
-        if (error) {
-            setBrandInput(input)
-            setErrorMsg('Erro ao criar marca: ' + error.message)
+            setErrorMsg('Erro ao criar marca: ' + (json.error || res.statusText))
             return
         }
         setBrandInput('')
-        setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-        setBrandId(data.id)
+        setBrands(prev => [...prev, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
+        setBrandId(json.brand.id)
     }
 
     // Máscara de moeda BR — mesmo padrão usado em ProductList/DailyMovement.
@@ -174,11 +167,6 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('Informe um preço de venda válido.')
             return
         }
-        if (!tenantId) {
-            setErrorMsg('Empresa não identificada. Recarregue a página e tente novamente.')
-            return
-        }
-
         setSaving(true)
         try {
             const res = await fetch('/api/products', {
@@ -186,7 +174,6 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 body: JSON.stringify({
-                    tenant_id: tenantId,
                     name: name.trim(),
                     sku: sku.trim() || null,
                     cost_price: parseCurrency(costPrice) || 0,

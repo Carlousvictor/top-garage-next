@@ -26,6 +26,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [lowStockOnly, setLowStockOnly] = useState(searchParams.get('filter') === 'low-stock')
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [saveError, setSaveError] = useState('')
     const [categoryInput, setCategoryInput] = useState('')
     const [brandInput, setBrandInput] = useState('')
     const [currentProduct, setCurrentProduct] = useState({
@@ -146,61 +147,51 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const handleCreateCategory = async (inputValue) => {
         const name = inputValue.trim()
         if (!name) return
-        if (!tenantId) {
+        const res = await fetch('/api/categories', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name })
+        })
+        const json = await res.json()
+        if (!res.ok) {
             setCategoryInput(inputValue)
-            alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
-            return
-        }
-        const { data, error } = await supabase
-            .from('categories')
-            .insert([{ tenant_id: tenantId, name }])
-            .select()
-            .single()
-        if (error) {
-            setCategoryInput(inputValue)
-            alert('Erro ao criar categoria: ' + error.message)
+            setSaveError('Erro ao criar categoria: ' + (json.error || res.statusText))
             return
         }
         setCategoryInput('')
-        setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-        setCurrentProduct(prev => ({ ...prev, category_id: data.id }))
+        setCategories(prev => [...prev, json.category].sort((a, b) => a.name.localeCompare(b.name)))
+        setCurrentProduct(prev => ({ ...prev, category_id: json.category.id }))
     }
 
     const handleCreateBrand = async (inputValue) => {
         const name = inputValue.trim()
         if (!name) return
-        if (!tenantId) {
+        const res = await fetch('/api/brands', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ name })
+        })
+        const json = await res.json()
+        if (!res.ok) {
             setBrandInput(inputValue)
-            alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
-            return
-        }
-        const { data, error } = await supabase
-            .from('brands')
-            .insert([{ tenant_id: tenantId, name }])
-            .select()
-            .single()
-        if (error) {
-            setBrandInput(inputValue)
-            alert('Erro ao criar marca: ' + error.message)
+            setSaveError('Erro ao criar marca: ' + (json.error || res.statusText))
             return
         }
         setBrandInput('')
-        setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
-        setCurrentProduct(prev => ({ ...prev, brand_id: data.id }))
+        setBrands(prev => [...prev, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
+        setCurrentProduct(prev => ({ ...prev, brand_id: json.brand.id }))
     }
 
     const handleSave = async (e) => {
         e.preventDefault()
-        if (!tenantId) {
-            alert('Empresa não identificada. Recarregue a página e tente novamente.')
-            return
-        }
+        setSaveError('')
         setLoading(true)
 
         try {
             const payload = {
                 id: currentProduct.id || undefined,
-                tenant_id: tenantId,
                 name: currentProduct.name,
                 sku: currentProduct.sku || null,
                 ean: currentProduct.ean ? String(currentProduct.ean).trim() || null : null,
@@ -231,7 +222,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             setBrandInput('')
             setCategoryInput('')
         } catch (error) {
-            alert('Erro ao salvar produto: ' + error.message)
+            setSaveError('Erro ao salvar produto: ' + error.message)
         } finally {
             setLoading(false)
         }
@@ -696,7 +687,12 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             />
                         </div>
                     </div>
-                    <div className="flex gap-4 pt-6">
+                    {saveError && (
+                        <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
+                            {saveError}
+                        </div>
+                    )}
+                    <div className="flex gap-4 pt-4">
                         <button
                             type="submit"
                             disabled={loading}
@@ -706,7 +702,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         </button>
                         <button
                             type="button"
-                            onClick={() => setIsEditing(false)}
+                            onClick={() => { setIsEditing(false); setSaveError('') }}
                             className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
                         >
                             Cancelar
