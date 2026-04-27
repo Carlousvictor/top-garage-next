@@ -4,8 +4,7 @@ import { notFound } from 'next/navigation'
 
 export default async function EditThirdPartyOrderPage({ params }) {
     const supabase = await createClient()
-    // Need to await params.id depending on Next.js version, but let's assume standard params structure
-    const id = params.id
+    const { id } = await params
 
     const { data: order } = await supabase
         .from('service_orders')

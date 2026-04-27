@@ -1,7 +1,5 @@
 "use client"
 import { useState } from 'react'
-import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { UserPlus, X, Car, Search } from 'lucide-react'
 
@@ -10,8 +8,6 @@ import { UserPlus, X, Car, Search } from 'lucide-react'
 // Devolve o cliente criado via onCreated() — o ServiceOrderForm já tem useEffect que
 // busca veículos do cliente quando o id muda, então o auto-preencher acontece naturalmente.
 export default function QuickClientModal({ isOpen, onClose, onCreated, initialName = '' }) {
-    const supabase = createClient()
-    const { tenantId } = useAuth()
 
     // Cliente
     const [name, setName] = useState(initialName)
@@ -75,9 +71,6 @@ export default function QuickClientModal({ isOpen, onClose, onCreated, initialNa
 
     const validateForm = () => {
         if (!name.trim() || name.trim().length < 2) return 'Informe o nome do cliente.'
-        const digits = phone.replace(/\D/g, '')
-        if (digits.length < 10) return 'Telefone precisa ter DDD + número (10 ou 11 dígitos).'
-        // Veículo é opcional — só valida se o operador digitou algo na placa
         if (plate.trim() && plate.replace(/\W/g, '').length < 7) {
             return 'Placa parece incompleta. Use AAA-1234 ou AAA1B23.'
         }
@@ -95,80 +88,53 @@ export default function QuickClientModal({ isOpen, onClose, onCreated, initialNa
             return
         }
 
-        if (!tenantId) {
-            setErrorMsg('Tenant não identificado. Faça login novamente.')
-            return
-        }
-
         setSaving(true)
+        try {
+            const vehicles = plate.trim() ? [{
+                plate: plate.trim().toUpperCase(),
+                brand: brand.trim() || null,
+                model: model.trim() || null,
+                year: year.trim() || null,
+                color: color.trim() || null,
+                ...extraVehicleData
+            }] : []
 
-        // 1. Cria cliente
-        const { data: client, error: clientErr } = await supabase
-            .from('clients')
-            .insert([{
-                tenant_id: tenantId,
-                name: name.trim(),
-                phone: phone.replace(/\D/g, '') || null,
-                email: email.trim() || null,
-                document: document.trim() || null
-            }])
-            .select()
-            .single()
-
-        if (clientErr) {
-            setSaving(false)
-            setErrorMsg('Erro ao salvar cliente: ' + clientErr.message)
-            return
-        }
-
-        // 2. Se o operador digitou uma placa, cria o veículo vinculado.
-        //    Se vier sem placa, cliente fica sem veículo (operador adiciona depois em /clients).
-        //    Os campos "extras" (chassi, combustível, etc) só vêm preenchidos se o operador
-        //    clicou em "Buscar" — caso contrário ficam null.
-        if (plate.trim()) {
-            const { error: vehicleErr } = await supabase
-                .from('vehicles')
-                .insert([{
-                    tenant_id: tenantId,
-                    client_id: client.id,
-                    plate: plate.trim().toUpperCase(),
-                    brand: brand.trim() || null,
-                    model: model.trim() || null,
-                    year: year.trim() || null,
-                    color: color.trim() || null,
-                    submodel: extraVehicleData.submodel || null,
-                    manufacture_year: extraVehicleData.manufacture_year || null,
-                    fuel_type: extraVehicleData.fuel_type || null,
-                    chassi: extraVehicleData.chassi || null,
-                    engine_displacement: extraVehicleData.engine_displacement || null,
-                    transmission: extraVehicleData.transmission || null,
-                    city: extraVehicleData.city || null,
-                    state: extraVehicleData.state || null
-                }])
-
-            if (vehicleErr) {
-                // Falha do veículo NÃO bloqueia o cadastro do cliente — só avisa.
-                setSaving(false)
-                setErrorMsg(`Cliente criado, mas falhou salvar o veículo: ${vehicleErr.message}. Adicione manualmente em /clients.`)
-                onCreated(client)
+            const res = await fetch('/api/clients', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    name: name.trim(),
+                    phone: phone.replace(/\D/g, '') || null,
+                    email: email.trim() || null,
+                    document: document.trim() || null,
+                    vehicles
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setErrorMsg('Erro ao salvar cliente: ' + (json.error || res.statusText))
                 return
             }
+
+            const created = json.clients?.find(c => c.name === name.trim()) ?? json.clients?.[0] ?? null
+            if (created) onCreated(created)
+
+            setName('')
+            setPhone('')
+            setEmail('')
+            setDocument('')
+            setPlate('')
+            setBrand('')
+            setModel('')
+            setYear('')
+            setColor('')
+            setExtraVehicleData({})
+        } catch (err) {
+            setErrorMsg('Erro ao salvar cliente: ' + err.message)
+        } finally {
+            setSaving(false)
         }
-
-        setSaving(false)
-        onCreated(client)
-
-        // Reset form pra próximo uso
-        setName('')
-        setPhone('')
-        setEmail('')
-        setDocument('')
-        setPlate('')
-        setBrand('')
-        setModel('')
-        setYear('')
-        setColor('')
-        setExtraVehicleData({})
     }
 
     if (!isOpen) return null
@@ -209,9 +175,7 @@ export default function QuickClientModal({ isOpen, onClose, onCreated, initialNa
                                 />
                             </div>
                             <div className="md:col-span-5">
-                                <label className="block text-sm text-gray-300 mb-1">
-                                    Telefone (WhatsApp) <span className="text-red-500">*</span>
-                                </label>
+                                <label className="block text-sm text-gray-300 mb-1">Telefone (WhatsApp)</label>
                                 <input
                                     type="tel"
                                     value={phone}
