@@ -15,10 +15,12 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
     }
 
     const products = items.filter(i => i.type === 'product')
-    const services = items.filter(i => i.type === 'service')
+    const services = items.filter(i => i.type !== 'product')
 
-    const totalProducts = products.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
-    const totalServices = services.reduce((acc, i) => acc + (i.quantity * i.unit_price), 0)
+    const safeSum = (list) => list.reduce((acc, i) => acc + ((i.quantity ?? 1) * (i.unit_price ?? 0)), 0)
+    const totalProducts = safeSum(products)
+    const totalServices = safeSum(services)
+    const totalAll = safeSum(items)
 
     const formatKm = (km) => km ? `${Number(km).toLocaleString('pt-BR')} km` : ''
 
@@ -158,7 +160,7 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                         )}
                         <div className="flex justify-between items-center bg-black text-white p-2">
                             <span className="text-sm uppercase font-black">Total Geral</span>
-                            <span className="text-xl font-black">R$ {(totalProducts + totalServices).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            <span className="text-xl font-black">R$ {totalAll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
                     </div>
                 </div>
