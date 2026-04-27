@@ -1,7 +1,5 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'
 import CreatableSelect from 'react-select/creatable'
 import { Package, X } from 'lucide-react'
 
@@ -33,9 +31,6 @@ const selectStyles = {
 // são obrigatórios; custo, margem e SKU são opcionais. Categoria/marca/fornecedor
 // ficam pra edição completa em /stock — aqui é só atalho.
 export default function QuickProductModal({ isOpen, onClose, onCreated, initialName = '' }) {
-    const supabase = createClient()
-    const { tenantId, loading: authLoading } = useAuth()
-
     const [name, setName] = useState(initialName)
     const [sku, setSku] = useState('')
     const [costPrice, setCostPrice] = useState('')
@@ -55,7 +50,6 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
     const [categoryInput, setCategoryInput] = useState('')
     const [brandInput, setBrandInput] = useState('')
 
-    // Sempre que o modal abrir com um initialName novo, sincroniza o campo name.
     useEffect(() => {
         if (isOpen) {
             setName(initialName)
@@ -63,20 +57,21 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         }
     }, [isOpen, initialName])
 
-    // Lazy load: só busca categorias/marcas quando o modal abre pela 1ª vez na sessão.
+    // Carrega categorias e marcas via API server-side na primeira abertura do modal.
     useEffect(() => {
-        if (!isOpen || catalogLoaded || !tenantId) return
+        if (!isOpen || catalogLoaded) return
         const load = async () => {
-            const [{ data: cats }, { data: brs }] = await Promise.all([
-                supabase.from('categories').select('*').order('name'),
-                supabase.from('brands').select('*').order('name')
+            const [catsRes, brsRes] = await Promise.all([
+                fetch('/api/categories', { credentials: 'include' }),
+                fetch('/api/brands', { credentials: 'include' }),
             ])
-            setCategories(cats || [])
-            setBrands(brs || [])
+            const [catsJson, brsJson] = await Promise.all([catsRes.json(), brsRes.json()])
+            setCategories(catsJson.categories || [])
+            setBrands(brsJson.brands || [])
             setCatalogLoaded(true)
         }
         load()
-    }, [isOpen, catalogLoaded, tenantId])
+    }, [isOpen, catalogLoaded])
 
     const handleCreateCategory = async (input) => {
         const newName = input.trim()
