@@ -199,11 +199,12 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
 
         try {
             const payload = {
+                id: currentProduct.id || undefined,
                 tenant_id: tenantId,
                 name: currentProduct.name,
-                sku: currentProduct.sku,
+                sku: currentProduct.sku || null,
                 ean: currentProduct.ean ? String(currentProduct.ean).trim() || null : null,
-                description: currentProduct.description,
+                description: currentProduct.description || null,
                 cost_price: parseCurrency(currentProduct.cost_price),
                 selling_price: parseCurrency(currentProduct.selling_price),
                 profit_margin_percent: parseFloat(currentProduct.profit_margin_percent || 0),
@@ -215,29 +216,20 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 linked_products: currentProduct.linked_products ? currentProduct.linked_products.map(opt => opt.value) : []
             }
 
-            if (currentProduct.id) {
-                const { tenant_id: _tid, ...updatePayload } = payload
-                const { error: updateError } = await supabase
-                    .from('products')
-                    .update(updatePayload)
-                    .eq('id', currentProduct.id)
-                if (updateError) throw new Error(updateError.message)
-            } else {
-                const { error: insertError } = await supabase
-                    .from('products')
-                    .insert([payload])
-                if (insertError) throw new Error(insertError.message)
-            }
+            const res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            })
 
-            // Rebusca a lista completa (com joins) pra atualizar a tela sem reload
-            const { data: fresh } = await supabase
-                .from('products')
-                .select('*, suppliers(name), categories(name), brands(name)')
-                .order('name')
-            if (fresh) setProducts(fresh)
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao salvar produto.')
 
+            if (json.products) setProducts(json.products)
             setIsEditing(false)
-            router.refresh()
+            setBrandInput('')
+            setCategoryInput('')
         } catch (error) {
             alert('Erro ao salvar produto: ' + error.message)
         } finally {

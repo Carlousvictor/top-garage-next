@@ -181,9 +181,11 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
 
         setSaving(true)
         try {
-            const { data, error } = await supabase
-                .from('products')
-                .insert([{
+            const res = await fetch('/api/products', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
                     tenant_id: tenantId,
                     name: name.trim(),
                     sku: sku.trim() || null,
@@ -193,18 +195,21 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                     quantity: parseInt(quantity) || 0,
                     min_quantity: parseInt(minQuantity) || 0,
                     category_id: categoryId || null,
-                    brand_id: brandId || null
-                }])
-                .select()
-                .single()
-
-            if (error) {
-                setErrorMsg('Erro ao salvar produto: ' + error.message)
+                    brand_id: brandId || null,
+                    linked_products: []
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setErrorMsg('Erro ao salvar produto: ' + (json.error || res.statusText))
                 return
             }
 
-            onCreated(data)
-            // Reset pra próximo uso
+            // Devolve o primeiro produto da lista retornada que bate com o nome inserido,
+            // ou o último item caso não encontre (acabou de ser inserido).
+            const saved = json.products?.find(p => p.name === name.trim()) ?? json.products?.[0] ?? null
+            if (saved) onCreated(saved)
+
             setName('')
             setSku('')
             setCostPrice('')
