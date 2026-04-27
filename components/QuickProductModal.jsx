@@ -54,10 +54,14 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         if (isOpen) {
             setName(initialName)
             setErrorMsg('')
+        } else {
+            // Reseta o flag para que na próxima abertura busque dados frescos do banco.
+            // Garante que categorias/marcas criadas em outras telas apareçam aqui.
+            setCatalogLoaded(false)
         }
     }, [isOpen, initialName])
 
-    // Carrega categorias e marcas via API server-side na primeira abertura do modal.
+    // Busca categorias e marcas sempre que o modal abre (catalogLoaded é resetado no close).
     useEffect(() => {
         if (!isOpen || catalogLoaded) return
         const load = async () => {

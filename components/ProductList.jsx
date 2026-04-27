@@ -218,6 +218,16 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             if (!res.ok) throw new Error(json.error || 'Erro ao salvar produto.')
 
             if (json.products) setProducts(json.products)
+
+            // Re-busca categorias e marcas para que opções criadas em outras abas apareçam.
+            const [catsRes, brsRes] = await Promise.all([
+                fetch('/api/categories', { credentials: 'include' }),
+                fetch('/api/brands', { credentials: 'include' }),
+            ])
+            const [catsJson, brsJson] = await Promise.all([catsRes.json(), brsRes.json()])
+            if (catsJson.categories) setCategories(catsJson.categories)
+            if (brsJson.brands) setBrands(brsJson.brands)
+
             setIsEditing(false)
             setBrandInput('')
             setCategoryInput('')
