@@ -22,7 +22,7 @@ export const AuthProvider = ({ children }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
                 setUser(session.user)
-                await fetchTenantData(session.user.id)
+                await fetchTenantData()
             } else {
                 setUser(null)
                 setTenantId(null)
@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }) => {
             const { data: { session } } = await supabase.auth.getSession()
             if (session?.user) {
                 setUser(session.user)
-                await fetchTenantData(session.user.id)
+                await fetchTenantData()
             } else {
                 setLoading(false)
             }
@@ -51,38 +51,24 @@ export const AuthProvider = ({ children }) => {
         }
     }, [])
 
-    const fetchTenantData = async (userId) => {
+    const fetchTenantData = async () => {
         try {
-            // Split em 2 queries: evita depender de PostgREST resolver o relacionamento
-            // FK automaticamente (que tem falhado após as alterações de schema).
-            const { data: profileData, error: profileError } = await supabase
-                .from('profiles')
-                .select('tenant_id, role')
-                .eq('user_id', userId)
-                .single()
+            // Usa API route server-side para evitar bloqueio de RLS no cliente
+            const res = await fetch('/api/auth/profile', { credentials: 'include' })
+            if (!res.ok) return
 
-            if (profileError) {
-                console.error('Error fetching profile:', profileError)
-                return
-            }
+            const profile = await res.json()
+            if (profile.tenantId) {
+                setTenantId(profile.tenantId)
+                setRole(profile.role)
 
-            if (profileData) {
-                setTenantId(profileData.tenant_id)
-                setRole(profileData.role)
+                const { data: tenantData } = await supabase
+                    .from('tenants')
+                    .select('name, logo_url, primary_color')
+                    .eq('id', profile.tenantId)
+                    .single()
 
-                if (profileData.tenant_id) {
-                    const { data: tenantData, error: tenantError } = await supabase
-                        .from('tenants')
-                        .select('name, logo_url, primary_color')
-                        .eq('id', profileData.tenant_id)
-                        .single()
-
-                    if (tenantError) {
-                        console.error('Error fetching tenant:', tenantError)
-                    } else {
-                        setTenant(tenantData)
-                    }
-                }
+                if (tenantData) setTenant(tenantData)
             }
         } catch (error) {
             console.error('Error fetching tenant data:', error)
