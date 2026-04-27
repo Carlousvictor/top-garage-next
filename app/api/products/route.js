@@ -38,14 +38,16 @@ export async function POST(request) {
     const { id, tenant_id: _ignored, ...fields } = body
 
     if (id) {
-        // UPDATE — only allow touching rows that belong to this tenant
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
             .from('products')
-            .update(fields)
+            .update({ ...fields, tenant_id: tenantId })
             .eq('id', id)
-            .eq('tenant_id', tenantId)
+            .select()
 
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+        if (!updated || updated.length === 0) {
+            return NextResponse.json({ error: `Produto id=${id} não foi atualizado. Verifique RLS ou se o registro existe.` }, { status: 400 })
+        }
     } else {
         // INSERT — always stamp with server-derived tenant_id
         const { error } = await supabase
