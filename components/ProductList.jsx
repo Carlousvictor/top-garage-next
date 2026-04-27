@@ -205,6 +205,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 supplier_id: currentProduct.supplier_id || null,
                 category_id: currentProduct.category_id || null,
                 brand_id: currentProduct.brand_id || null,
+                linked_products: currentProduct.linked_products ? currentProduct.linked_products.map(opt => opt.value) : []
             }
 
             if (currentProduct.id) {
