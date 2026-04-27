@@ -29,6 +29,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [saveError, setSaveError] = useState('')
     const [pendingCategoryName, setPendingCategoryName] = useState(null)
     const [pendingBrandName, setPendingBrandName] = useState(null)
+    const [categoryInput, setCategoryInput] = useState('')
+    const [brandInput, setBrandInput] = useState('')
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
@@ -642,6 +644,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
                                 options={categories.map(c => ({ value: c.id, label: c.name }))}
+                                inputValue={categoryInput}
+                                onInputChange={(val, { action }) => {
+                                    if (action === 'input-change') setCategoryInput(val)
+                                    if (action === 'set-value' || action === 'menu-close') setCategoryInput('')
+                                }}
                                 value={
                                     currentProduct.category_id
                                         ? (() => {
@@ -652,6 +659,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 }
                                 onChange={(opt) => setCurrentProduct(prev => ({ ...prev, category_id: opt ? opt.value : null }))}
                                 onCreateOption={handleCreateCategory}
+                                onBlur={() => {
+                                    if (categoryInput.trim()) handleCreateCategory(categoryInput.trim())
+                                }}
                                 styles={customStyles}
                             />
                         </div>
@@ -664,6 +674,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
                                 options={brands.map(b => ({ value: b.id, label: b.name }))}
+                                inputValue={brandInput}
+                                onInputChange={(val, { action }) => {
+                                    if (action === 'input-change') setBrandInput(val)
+                                    if (action === 'set-value' || action === 'menu-close') setBrandInput('')
+                                }}
                                 value={
                                     currentProduct.brand_id
                                         ? (() => {
@@ -674,6 +689,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 }
                                 onChange={(opt) => setCurrentProduct(prev => ({ ...prev, brand_id: opt ? opt.value : null }))}
                                 onCreateOption={handleCreateBrand}
+                                onBlur={() => {
+                                    if (brandInput.trim()) handleCreateBrand(brandInput.trim())
+                                }}
                                 styles={customStyles}
                             />
                         </div>

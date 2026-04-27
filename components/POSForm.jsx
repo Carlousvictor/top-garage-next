@@ -4,6 +4,8 @@ import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import CreatableSelect from 'react-select/creatable'
+import Select from 'react-select'
+import QuickProductModal from './QuickProductModal'
 
 export default function POSForm() {
     const supabase = createClient()
@@ -13,7 +15,9 @@ export default function POSForm() {
     const [products, setProducts] = useState([])
     const [clients, setClients] = useState([])
     const [cart, setCart] = useState([])
-    const [selectedProduct, setSelectedProduct] = useState('')
+    const [selectedProduct, setSelectedProduct] = useState(null)
+    const [quickProductOpen, setQuickProductOpen] = useState(false)
+    const [quickProductInitialName, setQuickProductInitialName] = useState('')
     const [selectedClient, setSelectedClient] = useState(null)
     // Texto que o operador digitou no select de cliente — capturado em paralelo ao
     // selectedClient pra que o nome digitado seja aproveitado mesmo sem Enter/click.
@@ -42,12 +46,7 @@ export default function POSForm() {
         fetchData()
     }, [])
 
-    const handleAddToCart = () => {
-        if (!selectedProduct) return
-        const product = products.find(p => p.id === parseInt(selectedProduct))
-        if (!product) return
-
-        // Check if already in cart
+    const addProductToCart = (product) => {
         const existing = cart.find(item => item.product_id === product.id)
         if (existing) {
             setCart(cart.map(item => item.product_id === product.id ? { ...item, quantity: item.quantity + 1 } : item))
@@ -57,10 +56,23 @@ export default function POSForm() {
                 name: product.name,
                 unit_price: product.selling_price || 0,
                 quantity: 1,
-                max_quantity: product.quantity // For validation
+                max_quantity: product.quantity
             }])
         }
-        setSelectedProduct('')
+        setSelectedProduct(null)
+    }
+
+    const handleAddToCart = () => {
+        if (!selectedProduct) return
+        const product = products.find(p => p.id === selectedProduct.value)
+        if (!product) return
+        addProductToCart(product)
+    }
+
+    const handleQuickProductCreated = (newProduct) => {
+        setProducts(prev => [...prev, newProduct].sort((a, b) => a.name.localeCompare(b.name)))
+        addProductToCart(newProduct)
+        setQuickProductOpen(false)
     }
 
     const handleRemoveFromCart = (index) => {
@@ -190,21 +202,57 @@ export default function POSForm() {
                 <h2 className="text-2xl font-bold text-white mb-4">Ponto de Venda (PDV)</h2>
 
                 <div className="flex gap-2 mb-6">
-                    <select
-                        className="bg-black border border-neutral-700 text-white text-sm rounded-lg block w-full p-3"
-                        value={selectedProduct}
-                        onChange={(e) => setSelectedProduct(e.target.value)}
-                    >
-                        <option value="">Selecione um produto para venda...</option>
-                        {products.map(p => (
-                            <option key={p.id} value={p.id} disabled={p.quantity <= 0}>
-                                {p.name} - R$ {p.selling_price} (Estoque: {p.quantity})
-                            </option>
-                        ))}
-                    </select>
+                    <div className="flex-1">
+                        <CreatableSelect
+                            instanceId="pdv-product"
+                            placeholder="Buscar por nome, SKU ou EAN..."
+                            formatCreateLabel={(input) => `Cadastrar novo produto: "${input}"`}
+                            noOptionsMessage={() => 'Nenhum produto encontrado — clique para cadastrar'}
+                            options={products.map(p => ({
+                                value: p.id,
+                                label: p.name,
+                                name: p.name,
+                                sku: p.sku || '',
+                                ean: p.ean || '',
+                                price: p.selling_price,
+                                qty: p.quantity
+                            }))}
+                            filterOption={(option, input) => {
+                                if (!input) return true
+                                const q = input.toLowerCase()
+                                return (
+                                    option.data.name?.toLowerCase().includes(q) ||
+                                    option.data.sku?.toLowerCase().includes(q) ||
+                                    option.data.ean?.toLowerCase().includes(q)
+                                )
+                            }}
+                            formatOptionLabel={(opt, { context }) => {
+                                if (context === 'value') return <span>{opt.name}</span>
+                                return (
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span>{opt.name}</span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {opt.sku && <span className="text-[11px] text-gray-400 font-mono">{opt.sku}</span>}
+                                            <span className={`text-[11px] font-bold ${opt.qty <= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                                                Estq: {opt.qty}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )
+                            }}
+                            value={selectedProduct}
+                            onChange={(opt) => setSelectedProduct(opt)}
+                            onCreateOption={(input) => {
+                                setQuickProductInitialName(input)
+                                setQuickProductOpen(true)
+                            }}
+                            styles={selectStyles}
+                        />
+                    </div>
                     <button
                         onClick={handleAddToCart}
-                        className="bg-red-600 hover:bg-red-700 text-white px-5 py-3 rounded-lg font-bold whitespace-nowrap"
+                        disabled={!selectedProduct}
+                        className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-5 py-3 rounded-lg font-bold whitespace-nowrap"
                     >
                         Adicionar
                     </button>
@@ -356,5 +404,12 @@ export default function POSForm() {
                 </div>
             </div>
         </div>
+
+        <QuickProductModal
+            isOpen={quickProductOpen}
+            onClose={() => setQuickProductOpen(false)}
+            onCreated={handleQuickProductCreated}
+            initialName={quickProductInitialName}
+        />
     )
 }
