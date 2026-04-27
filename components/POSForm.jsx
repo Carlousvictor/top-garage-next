@@ -204,18 +204,16 @@ export default function POSForm() {
 
                 <div className="flex gap-2 mb-6">
                     <div className="flex-1">
-                        <CreatableSelect
+                        <Select
                             instanceId="pdv-product"
                             placeholder="Buscar por nome, SKU ou EAN..."
-                            formatCreateLabel={(input) => `Cadastrar novo produto: "${input}"`}
-                            noOptionsMessage={() => 'Nenhum produto encontrado — clique para cadastrar'}
+                            noOptionsMessage={() => 'Nenhum produto encontrado'}
                             options={products.map(p => ({
                                 value: p.id,
                                 label: p.name,
                                 name: p.name,
                                 sku: p.sku || '',
                                 ean: p.ean || '',
-                                price: p.selling_price,
                                 qty: p.quantity
                             }))}
                             filterOption={(option, input) => {
@@ -243,10 +241,6 @@ export default function POSForm() {
                             }}
                             value={selectedProduct}
                             onChange={(opt) => setSelectedProduct(opt)}
-                            onCreateOption={(input) => {
-                                setQuickProductInitialName(input)
-                                setQuickProductOpen(true)
-                            }}
                             styles={selectStyles}
                         />
                     </div>
@@ -256,6 +250,13 @@ export default function POSForm() {
                         className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-5 py-3 rounded-lg font-bold whitespace-nowrap"
                     >
                         Adicionar
+                    </button>
+                    <button
+                        onClick={() => { setQuickProductInitialName(''); setQuickProductOpen(true) }}
+                        className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-3 rounded-lg font-bold whitespace-nowrap text-sm"
+                        title="Cadastrar novo produto"
+                    >
+                        + Novo
                     </button>
                 </div>
 
