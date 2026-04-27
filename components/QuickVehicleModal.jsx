@@ -1,16 +1,9 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { Car, X, Search } from 'lucide-react'
 
-// Cadastro rápido de veículo a partir da OS (cliente já existe).
-// Reutiliza o mesmo fluxo de placa + busca da API Placas usado no
-// QuickClientModal, mas sem criar cliente. Devolve o veículo via onCreated.
 export default function QuickVehicleModal({ isOpen, onClose, onCreated, clientId, clientName }) {
-    const supabase = createClient()
-    const { tenantId } = useAuth()
 
     const [plate, setPlate] = useState('')
     const [brand, setBrand] = useState('')
@@ -75,42 +68,45 @@ export default function QuickVehicleModal({ isOpen, onClose, onCreated, clientId
             setErrorMsg('Placa parece incompleta. Use AAA-1234 ou AAA1B23.')
             return
         }
-        if (!tenantId || !clientId) {
-            setErrorMsg('Cliente ou tenant não identificado. Recarregue a página.')
+        if (!clientId) {
+            setErrorMsg('Cliente não identificado. Feche e tente novamente.')
             return
         }
 
         setSaving(true)
-        const { data, error } = await supabase
-            .from('vehicles')
-            .insert([{
-                tenant_id: tenantId,
-                client_id: clientId,
-                plate: plate.trim().toUpperCase(),
-                brand: brand.trim() || null,
-                model: model.trim() || null,
-                year: year.trim() || null,
-                color: color.trim() || null,
-                submodel: extraVehicleData.submodel || null,
-                manufacture_year: extraVehicleData.manufacture_year || null,
-                fuel_type: extraVehicleData.fuel_type || null,
-                chassi: extraVehicleData.chassi || null,
-                engine_displacement: extraVehicleData.engine_displacement || null,
-                transmission: extraVehicleData.transmission || null,
-                city: extraVehicleData.city || null,
-                state: extraVehicleData.state || null
-            }])
-            .select()
-            .single()
-
-        setSaving(false)
-
-        if (error) {
-            setErrorMsg('Erro ao salvar veículo: ' + error.message)
-            return
+        try {
+            const res = await fetch('/api/vehicles', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    client_id: clientId,
+                    plate: plate.trim().toUpperCase(),
+                    brand: brand.trim() || null,
+                    model: model.trim() || null,
+                    year: year.trim() || null,
+                    color: color.trim() || null,
+                    submodel: extraVehicleData.submodel || null,
+                    manufacture_year: extraVehicleData.manufacture_year || null,
+                    fuel_type: extraVehicleData.fuel_type || null,
+                    chassi: extraVehicleData.chassi || null,
+                    engine_displacement: extraVehicleData.engine_displacement || null,
+                    transmission: extraVehicleData.transmission || null,
+                    city: extraVehicleData.city || null,
+                    state: extraVehicleData.state || null,
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                setErrorMsg('Erro ao salvar veículo: ' + (json.error || res.statusText))
+                return
+            }
+            onCreated(json.vehicle)
+        } catch (err) {
+            setErrorMsg('Erro inesperado: ' + err.message)
+        } finally {
+            setSaving(false)
         }
-
-        onCreated(data)
     }
 
     if (!isOpen) return null
