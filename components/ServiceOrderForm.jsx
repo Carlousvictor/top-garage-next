@@ -632,20 +632,44 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                 <CreatableSelect
                                     instanceId="os-product-select"
                                     isClearable
-                                    placeholder="Buscar ou digitar produto..."
+                                    placeholder="Buscar por nome, código (SKU) ou EAN..."
                                     noOptionsMessage={() => 'Nenhum produto. Digite para criar um item avulso.'}
                                     formatCreateLabel={(input) => `Adicionar item avulso: "${input}"`}
                                     value={selectedProduct
                                         ? (() => {
                                             const p = products.find(pp => pp.id === parseInt(selectedProduct))
-                                            return p ? { value: p.id, label: `${p.name} - R$ ${p.selling_price}` } : null
+                                            return p ? { value: p.id, label: p.name, name: p.name, sku: p.sku || '', ean: p.ean || '', price: p.selling_price } : null
                                         })()
                                         : null
                                     }
                                     options={products.map(p => ({
                                         value: p.id,
-                                        label: `${p.name} - R$ ${p.selling_price}`
+                                        label: p.name,
+                                        name: p.name,
+                                        sku: p.sku || '',
+                                        ean: p.ean || '',
+                                        price: p.selling_price
                                     }))}
+                                    filterOption={(option, input) => {
+                                        if (!input) return true
+                                        const q = input.toLowerCase()
+                                        return (
+                                            option.data.name?.toLowerCase().includes(q) ||
+                                            option.data.sku?.toLowerCase().includes(q) ||
+                                            option.data.ean?.toLowerCase().includes(q)
+                                        )
+                                    }}
+                                    formatOptionLabel={(opt, { context }) => {
+                                        if (context === 'value') return <span>{opt.name}</span>
+                                        return (
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span>{opt.name}</span>
+                                                {opt.sku && (
+                                                    <span className="text-[11px] text-gray-400 font-mono shrink-0">{opt.sku}</span>
+                                                )}
+                                            </div>
+                                        )
+                                    }}
                                     onChange={(opt) => setSelectedProduct(opt ? String(opt.value) : '')}
                                     onInputChange={(input, action) => {
                                         if (action.action === 'input-change') setProductSearchInput(input)
