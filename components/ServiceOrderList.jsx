@@ -43,6 +43,13 @@ export default function ServiceOrderList({ initialOrders }) {
         }
     }
 
+    const handleDelete = async (id) => {
+        if (!window.confirm(`Excluir OS #${id}? Esta ação não pode ser desfeita.`)) return
+        await supabase.from('service_order_items').delete().eq('service_order_id', id)
+        await supabase.from('service_orders').delete().eq('id', id)
+        setOrders(prev => prev.filter(o => o.id !== id))
+    }
+
     return (
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
             <div className="flex justify-between items-center mb-6">
@@ -143,13 +150,19 @@ export default function ServiceOrderList({ initialOrders }) {
                                             {order.status}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-3 text-right">
+                                    <td className="px-4 py-3 text-right flex items-center justify-end gap-3">
                                         <Link
                                             href={`/os/${order.id}`}
                                             className="text-blue-400 hover:text-blue-300 font-medium"
                                         >
                                             Ver/Editar
                                         </Link>
+                                        <button
+                                            onClick={() => handleDelete(order.id)}
+                                            className="text-red-500 hover:text-red-400 font-medium"
+                                        >
+                                            Excluir
+                                        </button>
                                     </td>
                                 </tr>
                             ))}
