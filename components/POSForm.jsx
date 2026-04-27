@@ -196,6 +196,7 @@ export default function POSForm() {
     }
 
     return (
+        <>
         <div className="bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 flex flex-col md:flex-row gap-6">
             {/* Products Selection */}
             <div className="flex-1">
@@ -411,5 +412,6 @@ export default function POSForm() {
             onCreated={handleQuickProductCreated}
             initialName={quickProductInitialName}
         />
+        </>
     )
 }
