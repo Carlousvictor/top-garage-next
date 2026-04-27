@@ -41,7 +41,7 @@ const selectStyles = {
     dropdownIndicator: (base) => ({ ...base, color: '#9ca3af' })
 }
 
-export default function ServiceOrderForm({ order }) {
+export default function ServiceOrderForm({ order, initialClients = [], initialProducts = [], initialServices = [], initialItems = [] }) {
     const supabase = createClient()
     const router = useRouter()
     const { companyId } = useAuth()
@@ -64,7 +64,7 @@ export default function ServiceOrderForm({ order }) {
     const [currentKm, setCurrentKm] = useState(order?.current_km?.toString() || '')
     const [nextRevisionKm, setNextRevisionKm] = useState(order?.next_revision_km?.toString() || '')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro') // New state
-    const [items, setItems] = useState([]) // Will fetch later if edit
+    const [items, setItems] = useState(initialItems)
     // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
     // importar histórico do sistema antigo. Salva em service_orders.created_at
     // e também é usada como data da transação financeira ao finalizar.
@@ -80,10 +80,10 @@ export default function ServiceOrderForm({ order }) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     })
 
-    const [clients, setClients] = useState([])
+    const [clients, setClients] = useState(initialClients)
     const [clientVehicles, setClientVehicles] = useState([])
-    const [products, setProducts] = useState([])
-    const [services, setServices] = useState([])
+    const [products, setProducts] = useState(initialProducts)
+    const [services, setServices] = useState(initialServices)
 
     const [selectedProduct, setSelectedProduct] = useState('')
     const [selectedService, setSelectedService] = useState('')
@@ -101,52 +101,28 @@ export default function ServiceOrderForm({ order }) {
     // Permite renderizar a card readonly com info completa (combustível, cilindrada, etc).
     const [selectedVehicle, setSelectedVehicle] = useState(null)
 
+
     useEffect(() => {
-        const fetchData = async () => {
-            const { data: clientsData } = await supabase.from('clients').select('*').order('name')
-            setClients(clientsData || [])
-
-            const { data: productsData } = await supabase.from('products').select('*').order('name')
-            setProducts(productsData || [])
-
-            const { data: servicesData } = await supabase.from('services').select('*').order('name')
-            setServices(servicesData || [])
-
-            if (order?.id) {
-                const { data: itemsData } = await supabase
-                    .from('service_order_items')
-                    .select('*')
-                    .eq('service_order_id', order.id)
-                setItems(itemsData || [])
-            }
+        if (!clientId) {
+            setClientVehicles([])
+            setSelectedVehicle(null)
+            return
         }
-        fetchData()
-    }, [order?.id])
-
-    useEffect(() => {
         const fetchVehicles = async () => {
-            if (clientId) {
-                const { data } = await supabase.from('vehicles').select('*').eq('client_id', clientId).order('created_at')
-                const vehicles = data || []
-                setClientVehicles(vehicles)
-                // Auto-preenche quando o cliente tem só 1 veículo E os campos ainda estão vazios.
-                // Edit mode (com plate já preenchido pelo `order`) é preservado — não sobrescreve.
-                if (vehicles.length === 1 && !plate) {
-                    const v = vehicles[0]
-                    setPlate(v.plate)
-                    setBrand(v.brand || '')
-                    setModel(v.model || '')
-                    setSelectedVehicle(v)
-                }
-                // Em edit mode com plate já preenchido, tenta achar o veículo correspondente
-                // pra mostrar a card também
-                if (plate && vehicles.length > 0) {
-                    const match = vehicles.find(v => v.plate?.toUpperCase() === plate.toUpperCase())
-                    if (match) setSelectedVehicle(match)
-                }
-            } else {
-                setClientVehicles([])
-                setSelectedVehicle(null)
+            const res = await fetch(`/api/vehicles/by-client?client_id=${clientId}`, { credentials: 'include' })
+            const json = await res.json()
+            const vehicles = json.vehicles || []
+            setClientVehicles(vehicles)
+            if (vehicles.length === 1 && !plate) {
+                const v = vehicles[0]
+                setPlate(v.plate)
+                setBrand(v.brand || '')
+                setModel(v.model || '')
+                setSelectedVehicle(v)
+            }
+            if (plate && vehicles.length > 0) {
+                const match = vehicles.find(v => v.plate?.toUpperCase() === plate.toUpperCase())
+                if (match) setSelectedVehicle(match)
             }
         }
         fetchVehicles()
