@@ -215,10 +215,12 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     }
 
     const handleServiceCreated = (service) => {
-        setServices(prev => [...prev, service].sort((a, b) => a.name.localeCompare(b.name)))
+        if (service.id) {
+            setServices(prev => [...prev, service].sort((a, b) => a.name.localeCompare(b.name)))
+        }
         setItems(prev => [...prev, {
             type: 'service',
-            service_id: service.id,
+            service_id: service.id || null,
             description: service.name,
             quantity: 1,
             unit_price: service.price || 0
