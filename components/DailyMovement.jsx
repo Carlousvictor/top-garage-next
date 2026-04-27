@@ -1,6 +1,5 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { createClient } from '../utils/supabase/client'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -12,10 +11,9 @@ import {
 import MovementPeriodReport from './MovementPeriodReport'
 
 export default function DailyMovement() {
-    const supabase = createClient()
     const router = useRouter()
     const searchParams = useSearchParams()
-    const { companyId, user } = useAuth()
+    const { companyId } = useAuth()
 
     // Date selection (defaults to today). Accepts ?date=YYYY-MM-DD to close past days.
     const initialDate = (() => {
@@ -74,30 +72,16 @@ export default function DailyMovement() {
     const fetchMovement = async () => {
         if (!companyId || !selectedDate) return
         setLoading(true)
-
-        const [y, m, d] = selectedDate.split('-').map(Number)
-        const startOfDay = new Date(y, m - 1, d, 0, 0, 0).toISOString()
-        const endOfDay = new Date(y, m - 1, d, 23, 59, 59).toISOString()
-
-        const { data: txs } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('tenant_id', companyId)
-            .gte('date', startOfDay)
-            .lte('date', endOfDay)
-            .order('date', { ascending: false })
-
-        setTransactions(txs || [])
-
-        const { data: cls } = await supabase
-            .from('daily_closures')
-            .select('*')
-            .eq('tenant_id', companyId)
-            .eq('closure_date', selectedDate)
-            .maybeSingle()
-
-        setClosure(cls || null)
-        setLoading(false)
+        try {
+            const res = await fetch(`/api/financial/daily?date=${selectedDate}`, { credentials: 'include' })
+            const json = await res.json()
+            setTransactions(json.transactions || [])
+            setClosure(json.closure || null)
+        } catch (err) {
+            console.error('Erro ao carregar movimento:', err)
+        } finally {
+            setLoading(false)
+        }
     }
 
     useEffect(() => {
@@ -108,15 +92,15 @@ export default function DailyMovement() {
     const fetchOpenSales = async () => {
         if (!companyId) return
         setOpenSalesLoading(true)
-        const { data } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('tenant_id', companyId)
-            .eq('type', 'income')
-            .eq('status', 'pending')
-            .order('date', { ascending: false })
-        setOpenSales(data || [])
-        setOpenSalesLoading(false)
+        try {
+            const res = await fetch('/api/financial/open-sales', { credentials: 'include' })
+            const json = await res.json()
+            setOpenSales(json.sales || [])
+        } catch (err) {
+            console.error('Erro ao carregar vendas em aberto:', err)
+        } finally {
+            setOpenSalesLoading(false)
+        }
     }
 
     useEffect(() => {
@@ -124,26 +108,28 @@ export default function DailyMovement() {
     }, [activeTab, companyId])
 
     // Marca uma venda em aberto como finalizada — atualiza status e re-data pra now()
-    // (semântica dupla do transactions.date: created_at no insert, paid_at no update)
     const handleFinalizeOpenSale = async (saleId) => {
         if (!window.confirm(`Finalizar esta venda como paga via ${finalizePaymentMethod}?`)) return
         setFinalizingId(saleId)
-        const { error } = await supabase
-            .from('transactions')
-            .update({
-                status: 'paid',
-                date: new Date().toISOString(),
-                payment_method: finalizePaymentMethod
+        try {
+            const res = await fetch('/api/financial/open-sales', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ id: saleId, payment_method: finalizePaymentMethod })
             })
-            .eq('id', saleId)
-        if (error) {
-            alert('Erro ao finalizar venda: ' + error.message)
-        } else {
-            await fetchOpenSales()
-            // Se a aba diária estiver olhando hoje, atualiza pra refletir nos totais
-            if (isToday) await fetchMovement()
+            const json = await res.json()
+            if (!res.ok) {
+                alert('Erro ao finalizar venda: ' + (json.error || res.statusText))
+            } else {
+                await fetchOpenSales()
+                if (isToday) await fetchMovement()
+            }
+        } catch (err) {
+            alert('Erro ao finalizar venda: ' + err.message)
+        } finally {
+            setFinalizingId(null)
         }
-        setFinalizingId(null)
     }
 
     // Vendas em aberto do dia selecionado — usado no modal de fechamento como aviso
@@ -160,35 +146,27 @@ export default function DailyMovement() {
 
         setExpenseSubmitting(true)
         const amountNum = parseCurrency(expenseAmount)
-
-        // If the user is viewing a past day, anchor the expense to that date (noon, to avoid TZ issues)
-        let expenseDate
-        if (isToday) {
-            expenseDate = new Date().toISOString()
-        } else {
-            const [y, m, d] = selectedDate.split('-').map(Number)
-            expenseDate = new Date(y, m - 1, d, 12, 0, 0).toISOString()
+        try {
+            const res = await fetch('/api/financial/daily', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ description: expenseDesc, amount: amountNum, selectedDate, isToday })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                alert('Erro ao adicionar despesa: ' + (json.error || res.statusText))
+            } else {
+                setIsExpenseModalOpen(false)
+                setExpenseDesc('')
+                setExpenseAmount('')
+                fetchMovement()
+            }
+        } catch (err) {
+            alert('Erro ao adicionar despesa: ' + err.message)
+        } finally {
+            setExpenseSubmitting(false)
         }
-
-        const { error } = await supabase.from('transactions').insert([{
-            tenant_id: companyId,
-            description: expenseDesc,
-            type: 'expense',
-            category: 'Despesa Diária',
-            amount: amountNum,
-            status: 'paid',
-            date: expenseDate
-        }])
-
-        if (!error) {
-            setIsExpenseModalOpen(false)
-            setExpenseDesc('')
-            setExpenseAmount('')
-            fetchMovement()
-        } else {
-            alert('Erro ao adicionar despesa: ' + error.message)
-        }
-        setExpenseSubmitting(false)
     }
 
     // Calculations
@@ -217,34 +195,34 @@ export default function DailyMovement() {
     }
 
     const handleCloseMovement = async () => {
-        if (!companyId) return
         setClosing(true)
-
-        const payload = {
-            tenant_id: companyId,
-            closure_date: selectedDate,
-            total_income: totalIncome,
-            total_expense: totalExpense,
-            net_balance: netBalance,
-            breakdown_by_method: incomesByMethod,
-            status: 'closed',
-            observation: closeObservation || null,
-            closed_at: new Date().toISOString(),
-            closed_by: user?.id || null
+        try {
+            const res = await fetch('/api/financial/closure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    closure_date: selectedDate,
+                    total_income: totalIncome,
+                    total_expense: totalExpense,
+                    net_balance: netBalance,
+                    breakdown_by_method: incomesByMethod,
+                    observation: closeObservation || null
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                alert('Erro ao fechar movimento: ' + (json.error || res.statusText))
+            } else {
+                setIsCloseModalOpen(false)
+                setCloseObservation('')
+                await fetchMovement()
+            }
+        } catch (err) {
+            alert('Erro ao fechar movimento: ' + err.message)
+        } finally {
+            setClosing(false)
         }
-
-        const { error } = await supabase
-            .from('daily_closures')
-            .upsert(payload, { onConflict: 'tenant_id,closure_date' })
-
-        if (error) {
-            alert('Erro ao fechar movimento: ' + error.message)
-        } else {
-            setIsCloseModalOpen(false)
-            setCloseObservation('')
-            await fetchMovement()
-        }
-        setClosing(false)
     }
 
     const formatDatePt = (dateStr) => {
