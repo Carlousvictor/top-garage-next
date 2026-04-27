@@ -54,13 +54,26 @@ export default function ClientList({ initialClients }) {
                     email: currentClient.email,
                     phone: currentClient.phone,
                     document: currentClient.document,
-                    // Only send pending vehicles for new clients (existing client uses handleAddVehicle)
                     vehicles: currentClient.id ? [] : vehicles,
                 })
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error || 'Erro ao salvar cliente.')
             setClients(json.clients || [])
+
+            // If editing an existing client and the vehicle form has a plate, save it now
+            const savedClientId = currentClient.id || json.clients?.find(c => c.name === currentClient.name)?.id
+            if (savedClientId && newVehicle.plate.trim()) {
+                const vRes = await fetch('/api/vehicles', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ client_id: savedClientId, ...newVehicle })
+                })
+                const vJson = await vRes.json()
+                if (!vRes.ok) throw new Error(vJson.error || 'Erro ao salvar veículo.')
+            }
+
             setIsEditing(false)
         } catch (err) {
             setSaveError(err.message)
