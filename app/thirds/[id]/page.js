@@ -16,5 +16,10 @@ export default async function EditThirdPartyOrderPage({ params }) {
         notFound()
     }
 
-    return <ThirdPartyOrderForm order={order} />
+    const { data: items } = await supabase
+        .from('service_order_items')
+        .select('*')
+        .eq('service_order_id', id)
+
+    return <ThirdPartyOrderForm order={order} initialItems={items || []} />
 }

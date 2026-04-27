@@ -1,12 +1,10 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { createClient } from '../utils/supabase/client'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 
-export default function ThirdPartyOrderForm({ order }) {
-    const supabase = createClient()
+export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
     const router = useRouter()
     const { tenantId } = useAuth()
 
@@ -21,25 +19,12 @@ export default function ThirdPartyOrderForm({ order }) {
     const [brand, setBrand] = useState(order?.vehicle_brand || '')
     const [model, setModel] = useState(order?.vehicle_model || '')
     const [observation, setObservation] = useState(order?.observation || '')
-    const [items, setItems] = useState([]) // Will fetch later if edit
+    const [items, setItems] = useState(initialItems)
 
     // Manual Entry States
     const [manualDesc, setManualDesc] = useState('')
     const [manualPrice, setManualPrice] = useState('')
     const [manualQtd, setManualQtd] = useState(1)
-
-    useEffect(() => {
-        const fetchData = async () => {
-            if (order?.id) {
-                const { data: itemsData } = await supabase
-                    .from('service_order_items')
-                    .select('*')
-                    .eq('service_order_id', order.id)
-                setItems(itemsData || [])
-            }
-        }
-        fetchData()
-    }, [order?.id])
 
     const handleAddManualItem = () => {
         if (!manualDesc || !manualPrice) return
