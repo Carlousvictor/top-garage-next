@@ -26,6 +26,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [lowStockOnly, setLowStockOnly] = useState(searchParams.get('filter') === 'low-stock')
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [categoryInput, setCategoryInput] = useState('')
+    const [brandInput, setBrandInput] = useState('')
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
@@ -145,6 +147,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         const name = inputValue.trim()
         if (!name) return
         if (!tenantId) {
+            setCategoryInput(inputValue)
             alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
             return
         }
@@ -154,9 +157,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             .select()
             .single()
         if (error) {
+            setCategoryInput(inputValue)
             alert('Erro ao criar categoria: ' + error.message)
             return
         }
+        setCategoryInput('')
         setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
         setCurrentProduct(prev => ({ ...prev, category_id: data.id }))
     }
@@ -165,6 +170,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         const name = inputValue.trim()
         if (!name) return
         if (!tenantId) {
+            setBrandInput(inputValue)
             alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
             return
         }
@@ -174,9 +180,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             .select()
             .single()
         if (error) {
+            setBrandInput(inputValue)
             alert('Erro ao criar marca: ' + error.message)
             return
         }
+        setBrandInput('')
         setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
         setCurrentProduct(prev => ({ ...prev, brand_id: data.id }))
     }
@@ -622,6 +630,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
                                 options={categories.map(c => ({ value: c.id, label: c.name }))}
+                                inputValue={categoryInput}
+                                onInputChange={(val, { action }) => { if (action === 'input-change') setCategoryInput(val) }}
                                 value={
                                     currentProduct.category_id
                                         ? (() => {
@@ -630,7 +640,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                         })()
                                         : null
                                 }
-                                onChange={(opt) => setCurrentProduct({ ...currentProduct, category_id: opt ? opt.value : '' })}
+                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, category_id: opt ? opt.value : '' }))}
                                 onCreateOption={handleCreateCategory}
                                 styles={customStyles}
                             />
@@ -644,6 +654,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
                                 options={brands.map(b => ({ value: b.id, label: b.name }))}
+                                inputValue={brandInput}
+                                onInputChange={(val, { action }) => { if (action === 'input-change') setBrandInput(val) }}
                                 value={
                                     currentProduct.brand_id
                                         ? (() => {
@@ -652,7 +664,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                         })()
                                         : null
                                 }
-                                onChange={(opt) => setCurrentProduct({ ...currentProduct, brand_id: opt ? opt.value : '' })}
+                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, brand_id: opt ? opt.value : '' }))}
                                 onCreateOption={handleCreateBrand}
                                 styles={customStyles}
                             />

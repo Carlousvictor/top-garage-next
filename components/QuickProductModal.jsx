@@ -52,6 +52,8 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
 
     const [saving, setSaving] = useState(false)
     const [errorMsg, setErrorMsg] = useState('')
+    const [categoryInput, setCategoryInput] = useState('')
+    const [brandInput, setBrandInput] = useState('')
 
     // Sempre que o modal abrir com um initialName novo, sincroniza o campo name.
     useEffect(() => {
@@ -81,6 +83,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         const newName = input.trim()
         if (!newName) return
         if (!tenantId) {
+            setCategoryInput(input)
             setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
             return
         }
@@ -90,9 +93,11 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             .select()
             .single()
         if (error) {
+            setCategoryInput(input)
             setErrorMsg('Erro ao criar categoria: ' + error.message)
             return
         }
+        setCategoryInput('')
         setCategories(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
         setCategoryId(data.id)
     }
@@ -101,6 +106,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
         const newName = input.trim()
         if (!newName) return
         if (!tenantId) {
+            setBrandInput(input)
             setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
             return
         }
@@ -110,9 +116,11 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             .select()
             .single()
         if (error) {
+            setBrandInput(input)
             setErrorMsg('Erro ao criar marca: ' + error.message)
             return
         }
+        setBrandInput('')
         setBrands(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
         setBrandId(data.id)
     }
@@ -326,6 +334,8 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                                 formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
                                 options={categories.map(c => ({ value: c.id, label: c.name }))}
+                                inputValue={categoryInput}
+                                onInputChange={(val, { action }) => { if (action === 'input-change') setCategoryInput(val) }}
                                 value={
                                     categoryId
                                         ? (() => {
@@ -348,6 +358,8 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                                 formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
                                 options={brands.map(b => ({ value: b.id, label: b.name }))}
+                                inputValue={brandInput}
+                                onInputChange={(val, { action }) => { if (action === 'input-change') setBrandInput(val) }}
                                 value={
                                     brandId
                                         ? (() => {
