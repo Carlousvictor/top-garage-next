@@ -118,18 +118,22 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                             </tr>
                         </thead>
                         <tbody>
-                            {items.map((item, idx) => (
+                            {items.map((item, idx) => {
+                                const qty = item.quantity ?? 1
+                                const price = item.unit_price ?? 0
+                                return (
                                 <tr key={idx} className="border-b border-gray-300">
-                                    <td className="border-r border-gray-300 py-1.5 text-center font-medium">{item.quantity}</td>
+                                    <td className="border-r border-gray-300 py-1.5 text-center font-medium">{qty}</td>
                                     <td className="border-r border-gray-300 py-1.5 pl-2 uppercase">{item.description} <span className="text-[10px] text-gray-500 ml-1">({item.type === 'product' ? 'P' : 'S'})</span></td>
                                     <td className="border-r border-gray-300 py-1.5 px-2 text-right">
-                                        {item.unit_price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        {price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </td>
                                     <td className="py-1.5 px-2 text-right font-bold">
-                                        {(item.quantity * item.unit_price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        {(qty * price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                                     </td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                             {/* Empty rows filler if needed for fixed height, skipped for dynamic content */}
                         </tbody>
                     </table>

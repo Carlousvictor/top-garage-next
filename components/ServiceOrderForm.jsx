@@ -236,7 +236,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     }
 
     const calculateTotal = () => {
-        return items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
+        return items.reduce((acc, item) => acc + ((item.quantity ?? 1) * (item.unit_price ?? 0)), 0)
     }
 
     const handleSubmit = async (e) => {
@@ -813,7 +813,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                                 />
                                             </td>
                                             <td className="px-4 py-2 text-white font-medium">
-                                                R$ {(item.quantity * item.unit_price).toFixed(2)}
+                                                R$ {((item.quantity ?? 1) * (item.unit_price ?? 0)).toFixed(2)}
                                             </td>
                                             <td className="px-4 py-2 text-right">
                                                 <button
