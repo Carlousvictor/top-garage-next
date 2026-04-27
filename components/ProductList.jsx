@@ -27,6 +27,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saveError, setSaveError] = useState('')
+    const [pendingCategoryName, setPendingCategoryName] = useState(null)
+    const [pendingBrandName, setPendingBrandName] = useState(null)
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
@@ -78,6 +80,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             brand_id: '',
             linked_products: []
         })
+        setPendingCategoryName(null)
+        setPendingBrandName(null)
         setIsEditing(true)
     }
 
@@ -142,58 +146,30 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Cria categoria sob demanda quando o usuário digita um nome novo no select.
     // A categoria nasce ligada ao tenant atual e fica imediatamente disponível
     // para os outros produtos da mesma oficina.
-    const handleCreateCategory = async (inputValue) => {
+    // Ao "criar" no dropdown, apenas registra o nome pendente e exibe uma opção temporária.
+    // A criação real no banco ocorre durante o handleSave, garantindo ordem correta.
+    const handleCreateCategory = (inputValue) => {
         const name = inputValue.trim()
         if (!name) return
-        try {
-            const res = await fetch('/api/categories', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ name })
-            })
-            const json = await res.json()
-            if (!res.ok) {
-                setSaveError('Erro ao criar categoria: ' + (json.error || res.statusText))
-                return
-            }
-            const newCat = json.category
-            if (!newCat?.id) {
-                setSaveError('Erro: API não retornou a categoria criada.')
-                return
-            }
-            setCategories(prev => [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name)))
-            setCurrentProduct(prev => ({ ...prev, category_id: newCat.id }))
-        } catch (err) {
-            setSaveError('Erro ao criar categoria: ' + err.message)
-        }
+        const tempId = `__new__cat__${name}`
+        setPendingCategoryName(name)
+        setCategories(prev => {
+            if (prev.some(c => c.id === tempId)) return prev
+            return [...prev, { id: tempId, name }].sort((a, b) => a.name.localeCompare(b.name))
+        })
+        setCurrentProduct(prev => ({ ...prev, category_id: tempId }))
     }
 
-    const handleCreateBrand = async (inputValue) => {
+    const handleCreateBrand = (inputValue) => {
         const name = inputValue.trim()
         if (!name) return
-        try {
-            const res = await fetch('/api/brands', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ name })
-            })
-            const json = await res.json()
-            if (!res.ok) {
-                setSaveError('Erro ao criar marca: ' + (json.error || res.statusText))
-                return
-            }
-            const newBrand = json.brand
-            if (!newBrand?.id) {
-                setSaveError('Erro: API não retornou a marca criada.')
-                return
-            }
-            setBrands(prev => [...prev, newBrand].sort((a, b) => a.name.localeCompare(b.name)))
-            setCurrentProduct(prev => ({ ...prev, brand_id: newBrand.id }))
-        } catch (err) {
-            setSaveError('Erro ao criar marca: ' + err.message)
-        }
+        const tempId = `__new__br__${name}`
+        setPendingBrandName(name)
+        setBrands(prev => {
+            if (prev.some(b => b.id === tempId)) return prev
+            return [...prev, { id: tempId, name }].sort((a, b) => a.name.localeCompare(b.name))
+        })
+        setCurrentProduct(prev => ({ ...prev, brand_id: tempId }))
     }
 
     const handleSave = async (e) => {
@@ -202,6 +178,37 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         setLoading(true)
 
         try {
+            // Se o usuário criou uma categoria nova no dropdown, persiste agora (antes do produto)
+            let categoryId = currentProduct.category_id
+            if (pendingCategoryName && String(categoryId).startsWith('__new__cat__')) {
+                const res = await fetch('/api/categories', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ name: pendingCategoryName })
+                })
+                const json = await res.json()
+                if (!res.ok) throw new Error('Erro ao criar categoria: ' + (json.error || res.statusText))
+                categoryId = json.category.id
+                setCategories(json.categories || [])
+                setPendingCategoryName(null)
+            }
+
+            let brandId = currentProduct.brand_id
+            if (pendingBrandName && String(brandId).startsWith('__new__br__')) {
+                const res = await fetch('/api/brands', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ name: pendingBrandName })
+                })
+                const json = await res.json()
+                if (!res.ok) throw new Error('Erro ao criar marca: ' + (json.error || res.statusText))
+                brandId = json.brand.id
+                setBrands(json.brands || [])
+                setPendingBrandName(null)
+            }
+
             const payload = {
                 id: currentProduct.id || undefined,
                 name: currentProduct.name,
@@ -214,8 +221,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 quantity: parseInt(currentProduct.quantity || 0),
                 min_quantity: parseInt(currentProduct.min_quantity || 0),
                 supplier_id: currentProduct.supplier_id || null,
-                category_id: currentProduct.category_id || null,
-                brand_id: currentProduct.brand_id || null,
+                category_id: categoryId || null,
+                brand_id: brandId || null,
                 linked_products: currentProduct.linked_products ? currentProduct.linked_products.map(opt => opt.value) : []
             }
 
@@ -720,7 +727,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         </button>
                         <button
                             type="button"
-                            onClick={() => { setIsEditing(false); setSaveError('') }}
+                            onClick={() => { setIsEditing(false); setSaveError(''); setPendingCategoryName(null); setPendingBrandName(null) }}
                             className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium"
                         >
                             Cancelar
