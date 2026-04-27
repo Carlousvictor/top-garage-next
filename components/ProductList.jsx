@@ -10,7 +10,7 @@ import { FileText, AlertCircle, X as XIcon } from 'lucide-react'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
     const supabase = createClient()
-    const { tenantId } = useAuth()
+    const { tenantId, loading: authLoading } = useAuth()
     const router = useRouter()
     const searchParams = useSearchParams()
 
@@ -143,7 +143,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // para os outros produtos da mesma oficina.
     const handleCreateCategory = async (inputValue) => {
         const name = inputValue.trim()
-        if (!name || !tenantId) return
+        if (!name) return
+        if (!tenantId) {
+            alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
+            return
+        }
         const { data, error } = await supabase
             .from('categories')
             .insert([{ tenant_id: tenantId, name }])
@@ -159,7 +163,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
 
     const handleCreateBrand = async (inputValue) => {
         const name = inputValue.trim()
-        if (!name || !tenantId) return
+        if (!name) return
+        if (!tenantId) {
+            alert('Sessão ainda carregando. Aguarde um instante e tente novamente.')
+            return
+        }
         const { data, error } = await supabase
             .from('brands')
             .insert([{ tenant_id: tenantId, name }])
@@ -175,13 +183,12 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
 
     const handleSave = async (e) => {
         e.preventDefault()
-        setLoading(true)
-
+        if (authLoading) return
         if (!tenantId) {
-            alert('Erro: Empresa não identificada.')
-            setLoading(false)
+            alert('Erro: Empresa não identificada. Recarregue a página e tente novamente.')
             return
         }
+        setLoading(true)
 
         try {
             const payload = {
@@ -678,10 +685,10 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     <div className="flex gap-4 pt-6">
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || authLoading}
                             className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg font-medium"
                         >
-                            {loading ? 'Salvando...' : 'Salvar'}
+                            {authLoading ? 'Aguardando...' : loading ? 'Salvando...' : 'Salvar'}
                         </button>
                         <button
                             type="button"

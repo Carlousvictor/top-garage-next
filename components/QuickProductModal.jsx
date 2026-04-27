@@ -34,7 +34,7 @@ const selectStyles = {
 // ficam pra edição completa em /stock — aqui é só atalho.
 export default function QuickProductModal({ isOpen, onClose, onCreated, initialName = '' }) {
     const supabase = createClient()
-    const { tenantId } = useAuth()
+    const { tenantId, loading: authLoading } = useAuth()
 
     const [name, setName] = useState(initialName)
     const [sku, setSku] = useState('')
@@ -79,7 +79,11 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
     // Cria categoria sob demanda — mesmo padrão de ProductList.handleCreateCategory.
     const handleCreateCategory = async (input) => {
         const newName = input.trim()
-        if (!newName || !tenantId) return
+        if (!newName) return
+        if (!tenantId) {
+            setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
+            return
+        }
         const { data, error } = await supabase
             .from('categories')
             .insert([{ tenant_id: tenantId, name: newName }])
@@ -95,7 +99,11 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
 
     const handleCreateBrand = async (input) => {
         const newName = input.trim()
-        if (!newName || !tenantId) return
+        if (!newName) return
+        if (!tenantId) {
+            setErrorMsg('Sessão ainda carregando. Aguarde um instante e tente novamente.')
+            return
+        }
         const { data, error } = await supabase
             .from('brands')
             .insert([{ tenant_id: tenantId, name: newName }])
@@ -158,8 +166,9 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('Informe um preço de venda válido.')
             return
         }
+        if (authLoading) return
         if (!tenantId) {
-            setErrorMsg('Tenant não identificado. Faça login novamente.')
+            setErrorMsg('Empresa não identificada. Recarregue a página e tente novamente.')
             return
         }
 
@@ -375,10 +384,10 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                         </button>
                         <button
                             type="submit"
-                            disabled={saving}
+                            disabled={saving || authLoading}
                             className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-lg shadow-red-900/20 transition"
                         >
-                            {saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
+                            {authLoading ? 'Aguardando...' : saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
                         </button>
                     </div>
                 </form>
