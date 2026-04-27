@@ -697,6 +697,10 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             />
                         </div>
                     </div>
+                    <div className="text-[11px] text-gray-500 font-mono bg-neutral-900 rounded p-2">
+                        DEBUG — category_id: {String(currentProduct.category_id ?? 'null')} | brand_id: {String(currentProduct.brand_id ?? 'null')} | categorias carregadas: {categories.length}
+                    </div>
+
                     {saveError && (
                         <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
                             {saveError}
