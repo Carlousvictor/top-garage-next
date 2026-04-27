@@ -209,17 +209,28 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             }
 
             if (currentProduct.id) {
-                const { tenant_id, ...updatePayload } = payload
-                await supabase.from('products').update(updatePayload).eq('id', currentProduct.id)
+                const { tenant_id: _tid, ...updatePayload } = payload
+                const { error: updateError } = await supabase
+                    .from('products')
+                    .update(updatePayload)
+                    .eq('id', currentProduct.id)
+                if (updateError) throw new Error(updateError.message)
             } else {
-                await supabase.from('products').insert([payload])
+                const { error: insertError } = await supabase
+                    .from('products')
+                    .insert([payload])
+                if (insertError) throw new Error(insertError.message)
             }
 
+            // Rebusca a lista completa (com joins) pra atualizar a tela sem reload
+            const { data: fresh } = await supabase
+                .from('products')
+                .select('*, suppliers(name), categories(name), brands(name)')
+                .order('name')
+            if (fresh) setProducts(fresh)
+
             setIsEditing(false)
-            // Trigger refresh via Next.js router
             router.refresh()
-            // To ensure local state updates if router.refresh is too slow, we can reload
-            window.location.reload()
         } catch (error) {
             alert('Erro ao salvar produto: ' + error.message)
         } finally {
