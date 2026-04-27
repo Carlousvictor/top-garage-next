@@ -27,8 +27,6 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const [isEditing, setIsEditing] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saveError, setSaveError] = useState('')
-    const [categoryInput, setCategoryInput] = useState('')
-    const [brandInput, setBrandInput] = useState('')
     const [currentProduct, setCurrentProduct] = useState({
         name: '',
         sku: '',
@@ -145,9 +143,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // A categoria nasce ligada ao tenant atual e fica imediatamente disponível
     // para os outros produtos da mesma oficina.
     const handleCreateCategory = async (inputValue) => {
+        const name = inputValue.trim()
+        if (!name) return
         try {
-            const name = inputValue.trim()
-            if (!name) return
             const res = await fetch('/api/categories', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -156,26 +154,25 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             })
             const json = await res.json()
             if (!res.ok) {
-                setCategoryInput(inputValue)
                 setSaveError('Erro ao criar categoria: ' + (json.error || res.statusText))
                 return
             }
-            if (!json.category?.id) {
-                setSaveError('Categoria criada mas API não retornou o ID. Resposta: ' + JSON.stringify(json))
+            const newCat = json.category
+            if (!newCat?.id) {
+                setSaveError('Erro: API não retornou a categoria criada.')
                 return
             }
-            setCategoryInput('')
-            setCategories(json.categories || [...categories, json.category].sort((a, b) => a.name.localeCompare(b.name)))
-            setCurrentProduct(prev => ({ ...prev, category_id: json.category.id }))
+            setCategories(prev => [...prev, newCat].sort((a, b) => a.name.localeCompare(b.name)))
+            setCurrentProduct(prev => ({ ...prev, category_id: newCat.id }))
         } catch (err) {
-            setSaveError('Erro inesperado ao criar categoria: ' + err.message)
+            setSaveError('Erro ao criar categoria: ' + err.message)
         }
     }
 
     const handleCreateBrand = async (inputValue) => {
+        const name = inputValue.trim()
+        if (!name) return
         try {
-            const name = inputValue.trim()
-            if (!name) return
             const res = await fetch('/api/brands', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -184,19 +181,18 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             })
             const json = await res.json()
             if (!res.ok) {
-                setBrandInput(inputValue)
                 setSaveError('Erro ao criar marca: ' + (json.error || res.statusText))
                 return
             }
-            if (!json.brand?.id) {
-                setSaveError('Marca criada mas API não retornou o ID. Resposta: ' + JSON.stringify(json))
+            const newBrand = json.brand
+            if (!newBrand?.id) {
+                setSaveError('Erro: API não retornou a marca criada.')
                 return
             }
-            setBrandInput('')
-            setBrands(json.brands || [...brands, json.brand].sort((a, b) => a.name.localeCompare(b.name)))
-            setCurrentProduct(prev => ({ ...prev, brand_id: json.brand.id }))
+            setBrands(prev => [...prev, newBrand].sort((a, b) => a.name.localeCompare(b.name)))
+            setCurrentProduct(prev => ({ ...prev, brand_id: newBrand.id }))
         } catch (err) {
-            setSaveError('Erro inesperado ao criar marca: ' + err.message)
+            setSaveError('Erro ao criar marca: ' + err.message)
         }
     }
 
@@ -639,8 +635,6 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar categoria: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova categoria'}
                                 options={categories.map(c => ({ value: c.id, label: c.name }))}
-                                inputValue={categoryInput}
-                                onInputChange={(val, { action }) => { if (action === 'input-change') setCategoryInput(val) }}
                                 value={
                                     currentProduct.category_id
                                         ? (() => {
@@ -649,7 +643,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                         })()
                                         : null
                                 }
-                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, category_id: opt ? opt.value : '' }))}
+                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, category_id: opt ? opt.value : null }))}
                                 onCreateOption={handleCreateCategory}
                                 styles={customStyles}
                             />
@@ -663,8 +657,6 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                 formatCreateLabel={(input) => `Cadastrar marca: "${input}"`}
                                 noOptionsMessage={() => 'Digite para cadastrar uma nova marca'}
                                 options={brands.map(b => ({ value: b.id, label: b.name }))}
-                                inputValue={brandInput}
-                                onInputChange={(val, { action }) => { if (action === 'input-change') setBrandInput(val) }}
                                 value={
                                     currentProduct.brand_id
                                         ? (() => {
@@ -673,7 +665,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                         })()
                                         : null
                                 }
-                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, brand_id: opt ? opt.value : '' }))}
+                                onChange={(opt) => setCurrentProduct(prev => ({ ...prev, brand_id: opt ? opt.value : null }))}
                                 onCreateOption={handleCreateBrand}
                                 styles={customStyles}
                             />
@@ -713,10 +705,6 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             />
                         </div>
                     </div>
-                    <div className="text-[11px] text-gray-500 font-mono bg-neutral-900 rounded p-2">
-                        DEBUG — category_id: {String(currentProduct.category_id ?? 'null')} | brand_id: {String(currentProduct.brand_id ?? 'null')} | categorias carregadas: {categories.length}
-                    </div>
-
                     {saveError && (
                         <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
                             {saveError}

@@ -57,13 +57,25 @@ export async function POST(request) {
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    const { data: products, error: listError } = await supabase
+    const { data: rawProducts, error: listError } = await supabase
         .from('products')
-        .select('*, suppliers(name), categories(name), brands(name)')
+        .select('*, suppliers(name)')
         .eq('tenant_id', tenantId)
         .order('name')
 
     if (listError) return NextResponse.json({ error: listError.message }, { status: 400 })
+
+    const { data: catsData } = await supabase.from('categories').select('id, name')
+    const { data: brsData } = await supabase.from('brands').select('id, name')
+
+    const catsMap = Object.fromEntries((catsData || []).map(c => [c.id, { name: c.name }]))
+    const brsMap = Object.fromEntries((brsData || []).map(b => [b.id, { name: b.name }]))
+
+    const products = (rawProducts || []).map(p => ({
+        ...p,
+        categories: p.category_id ? (catsMap[p.category_id] ?? null) : null,
+        brands: p.brand_id ? (brsMap[p.brand_id] ?? null) : null,
+    }))
 
     return NextResponse.json({ products })
 }
