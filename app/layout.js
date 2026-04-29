@@ -14,11 +14,14 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="pt-BR">
-      <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center p-4 md:p-6 antialiased">
+      <body className="min-h-screen bg-black text-gray-100 flex flex-col items-center p-4 md:p-6 antialiased print:p-0 print:bg-white print:text-black">
         <AuthProvider>
           <ToastProvider>
             <ConfirmProvider>
-              <div className="w-full max-w-screen-2xl flex flex-col xl:flex-row items-center justify-start gap-4 mb-6">
+              {/* Chrome do app (Header + Navbar) — escondido no print pra que
+                  componentes com layout print-only (LowStockReport, ServiceOrderPrint)
+                  apareçam sozinhos na folha. */}
+              <div className="w-full max-w-screen-2xl flex flex-col xl:flex-row items-center justify-start gap-4 mb-6 print:hidden">
                 <Header />
                 <Navbar />
               </div>

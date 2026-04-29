@@ -421,7 +421,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     }
 
     return (
-        <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
+        <>
+        {/* UI principal — escondida no print pra não imprimir um espelho da tela.
+            O LowStockReport (renderizado como irmão abaixo) é o único conteúdo
+            que aparece no PDF/impressora. */}
+        <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 print:hidden">
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-white">Gestão de Estoque</h2>
                 <div className="flex gap-2 w-full md:w-auto items-center">
@@ -786,7 +790,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     </div>
                 </form>
             )}
-            <LowStockReport products={products.filter(isLowStock)} />
         </div>
+        <LowStockReport products={products.filter(isLowStock)} />
+        </>
     )
 }
