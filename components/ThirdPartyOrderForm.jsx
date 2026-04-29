@@ -23,6 +23,20 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
     const [observation, setObservation] = useState(order?.observation || '')
     const [items, setItems] = useState(initialItems)
 
+    // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
+    // importar histórico do sistema antigo. Salva em service_orders.created_at.
+    const todayLocalISO = (() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })()
+    const [serviceDate, setServiceDate] = useState(() => {
+        if (!order?.created_at) return todayLocalISO
+        // Converte pra data local (não UTC) — evita off-by-one quando o
+        // timestamp foi gravado de madrugada UTC e o BRT está num dia diferente.
+        const d = new Date(order.created_at)
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })
+
     // Manual Entry States
     const [manualDesc, setManualDesc] = useState('')
     const [manualPrice, setManualPrice] = useState('')
@@ -72,7 +86,10 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                     vehicle_model: model,
                     observation,
                     total,
-                    service_date_iso: new Date().toISOString(),
+                    service_date_iso: (() => {
+                        const [y, m, d] = serviceDate.split('-').map(Number)
+                        return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+                    })(),
                     items: items.map(item => ({
                         description: item.description,
                         quantity: item.quantity,
@@ -140,6 +157,23 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                                 onChange={(e) => setModel(e.target.value)}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Data da OS</label>
+                            <input
+                                type="date"
+                                value={serviceDate}
+                                max={todayLocalISO}
+                                onChange={(e) => setServiceDate(e.target.value)}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            />
+                            {serviceDate !== todayLocalISO && (
+                                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                    OS retroativa — gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>.
+                                </p>
+                            )}
+                            <p className="text-[11px] text-gray-500 mt-1">Default = hoje. Use uma data passada para histórico.</p>
                         </div>
                     </div>
 
