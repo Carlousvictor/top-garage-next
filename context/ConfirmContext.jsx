@@ -1,14 +1,29 @@
 "use client"
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useRef } from 'react'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 
 const ConfirmContext = createContext(null)
 
 export function ConfirmProvider({ children }) {
     const [state, setState] = useState({ open: false })
+    const pendingResolveRef = useRef(null)
 
     const confirm = useCallback((options) => {
         return new Promise((resolve) => {
+            // If another confirm is open, resolve it as cancelled before opening the new one.
+            if (pendingResolveRef.current) {
+                pendingResolveRef.current(false)
+            }
+            pendingResolveRef.current = resolve
+
+            const finish = (result) => {
+                if (pendingResolveRef.current === resolve) {
+                    pendingResolveRef.current = null
+                    resolve(result)
+                }
+                setState(s => ({ ...s, open: false }))
+            }
+
             setState({
                 open: true,
                 title: options.title || 'Confirmar',
@@ -16,8 +31,8 @@ export function ConfirmProvider({ children }) {
                 confirmLabel: options.confirmLabel,
                 cancelLabel: options.cancelLabel,
                 danger: options.danger || false,
-                onConfirm: () => { setState(s => ({ ...s, open: false })); resolve(true) },
-                onCancel: () => { setState(s => ({ ...s, open: false })); resolve(false) },
+                onConfirm: () => finish(true),
+                onCancel: () => finish(false),
             })
         })
     }, [])
