@@ -758,7 +758,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                             <table className="w-full text-sm text-left text-gray-400">
                                 <thead className="text-xs text-gray-200 uppercase bg-neutral-900">
                                     <tr>
-                                        <th className="px-4 py-2">Descrição</th>
+                                        <th className="px-4 py-2">Descrição/OBS</th>
                                         <th className="px-4 py-2 w-20">Qtd</th>
                                         <th className="px-4 py-2 w-24">Valor Un.</th>
                                         <th className="px-4 py-2 w-24">Total</th>
@@ -768,7 +768,19 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                 <tbody>
                                     {items.map((item, idx) => (
                                         <tr key={idx} className="border-b border-neutral-800">
-                                            <td className="px-4 py-2">{item.description}</td>
+                                            <td className="px-4 py-2">
+                                                <input
+                                                    type="text"
+                                                    value={item.description ?? ''}
+                                                    onChange={(e) => {
+                                                        const newItems = [...items]
+                                                        newItems[idx].description = e.target.value
+                                                        setItems(newItems)
+                                                    }}
+                                                    className="w-full bg-neutral-800 border border-neutral-700 rounded p-1 text-white"
+                                                    placeholder="Descrição ou observação do item"
+                                                />
+                                            </td>
                                             <td className="px-4 py-2">
                                                 <input
                                                     type="number"
