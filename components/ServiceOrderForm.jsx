@@ -575,35 +575,37 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                         </div>
                     </div>
 
-                    {status === 'Concluido' && (
-                        <div className="bg-neutral-950 p-4 border border-blue-900/40 rounded-lg shadow-sm">
-                            <h3 className="text-sm font-bold text-blue-400 mb-3">Pós-Venda / CRM</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Data da Próxima Revisão</label>
-                                    <input
-                                        type="date"
-                                        value={nextRevisionDate}
-                                        onChange={(e) => setNextRevisionDate(e.target.value)}
-                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">Usada para o alerta no CRM via WhatsApp.</p>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">KM da Próxima Revisão</label>
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={nextRevisionKm}
-                                        onChange={(e) => setNextRevisionKm(e.target.value.replace(/\D/g, ''))}
-                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                                        placeholder={currentKm ? `Ex: ${parseInt(currentKm) + 10000}` : 'Ex: 55000'}
-                                    />
-                                    <p className="text-xs text-gray-500 mt-1">Ex: KM atual + 10.000 km — o que ocorrer primeiro com a data.</p>
-                                </div>
+                    {/* Pós-Venda / CRM — sempre visível, mesmo com OS Aberta/Em Andamento.
+                        Antes era gated por status === 'Concluido', mas isso escondia
+                        revisões já preenchidas quando a OS era reaberta para edição
+                        (e o operador então não conseguia ver o que já estava no CRM). */}
+                    <div className="bg-neutral-950 p-4 border border-blue-900/40 rounded-lg shadow-sm">
+                        <h3 className="text-sm font-bold text-blue-400 mb-3">Pós-Venda / CRM</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Data da Próxima Revisão</label>
+                                <input
+                                    type="date"
+                                    value={nextRevisionDate}
+                                    onChange={(e) => setNextRevisionDate(e.target.value)}
+                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Usada para o alerta no CRM via WhatsApp.</p>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">KM da Próxima Revisão</label>
+                                <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={nextRevisionKm}
+                                    onChange={(e) => setNextRevisionKm(e.target.value.replace(/\D/g, ''))}
+                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                    placeholder={currentKm ? `Ex: ${parseInt(currentKm) + 10000}` : 'Ex: 55000'}
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Ex: KM atual + 10.000 km — o que ocorrer primeiro com a data.</p>
                             </div>
                         </div>
-                    )}
+                    </div>
 
                     <div className="flex items-center gap-2">
                         <input

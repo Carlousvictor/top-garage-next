@@ -32,6 +32,7 @@ export default async function Home() {
     let todayNet = 0
     let todayClosed = false
     let pendingClosuresCount = 0
+    let upcomingRevisions = 0
 
     if (tenantId) {
         const { count: activeCount } = await supabase
@@ -110,6 +111,24 @@ export default async function Home() {
         )
 
         pendingClosuresCount = Array.from(movementDays).filter(d => !closedSet.has(d)).length
+
+        // Próximas revisões agendadas vencendo nos próximos 7 dias (incluindo hoje).
+        // Dedup por client_id — interessa "quantas pessoas pra contatar", não quantas
+        // OS. Clientes nulos (OS de terceiros) são descartados.
+        const weekAhead = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7)
+        const weekAheadStr = `${weekAhead.getFullYear()}-${String(weekAhead.getMonth() + 1).padStart(2, '0')}-${String(weekAhead.getDate()).padStart(2, '0')}`
+
+        const { data: upcomingRevs } = await supabase
+            .from('service_orders')
+            .select('client_id')
+            .eq('tenant_id', tenantId)
+            .not('next_revision_date', 'is', null)
+            .gte('next_revision_date', todayDateStr)
+            .lte('next_revision_date', weekAheadStr)
+
+        upcomingRevisions = new Set(
+            (upcomingRevs || []).map(r => r.client_id).filter(Boolean)
+        ).size
     }
 
     const metrics = {
@@ -118,7 +137,8 @@ export default async function Home() {
         todayIncome,
         todayNet,
         todayClosed,
-        pendingClosuresCount
+        pendingClosuresCount,
+        upcomingRevisions
     }
 
     return (

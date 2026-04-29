@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import {
     Wrench, Users, Package, FileText,
     CircleDollarSign, TrendingUp, AlertCircle, ShoppingCart, Activity,
-    PiggyBank, Lock, Unlock, Clock, Eye, EyeOff
+    PiggyBank, Lock, Unlock, Clock, Eye, EyeOff, CalendarClock
 } from 'lucide-react'
 
 const SHOW_VALUES_KEY = 'topgarage_show_values'
@@ -155,10 +155,10 @@ export default function DashboardHome({ metrics }) {
             )}
 
             {/* Quick Metrics / Indicators */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-blue-500/50 transition">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-blue-500/50 transition cursor-pointer" onClick={() => router.push('/os')}>
                     <div>
-                        <p className="text-gray-400 text-sm font-medium mb-1">OS em Andamento</p>
+                        <p className="text-gray-400 text-sm font-medium mb-1">OS em Aberto/Andamento</p>
                         <h3 className="text-2xl font-black text-white">{metrics.activeOS}</h3>
                     </div>
                     <div className="p-2.5 bg-blue-500/10 rounded-xl group-hover:scale-110 transition-transform">
@@ -175,6 +175,20 @@ export default function DashboardHome({ metrics }) {
                     </div>
                     <div className="p-2.5 bg-red-500/10 rounded-xl group-hover:scale-110 transition-transform">
                         <AlertCircle className="w-5 h-5 text-red-500" />
+                    </div>
+                </div>
+
+                {/* Revisões agendadas vencendo em até 7 dias — pessoas pra contatar via CRM. */}
+                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-amber-500/50 transition cursor-pointer" onClick={() => router.push('/crm')}>
+                    <div>
+                        <p className="text-gray-400 text-sm font-medium mb-1">Revisões em até 7 dias</p>
+                        <h3 className={`text-2xl font-black ${metrics.upcomingRevisions > 0 ? 'text-amber-400' : 'text-white'}`}>
+                            {metrics.upcomingRevisions}
+                        </h3>
+                        <p className="text-[11px] text-gray-500 mt-0.5">clientes pra avisar</p>
+                    </div>
+                    <div className="p-2.5 bg-amber-500/10 rounded-xl group-hover:scale-110 transition-transform">
+                        <CalendarClock className="w-5 h-5 text-amber-400" />
                     </div>
                 </div>
 
