@@ -11,8 +11,20 @@ export default async function Home() {
         redirect('/login')
     }
 
-    const { data: profile } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()
-    const tenantId = profile?.tenant_id
+    // profiles.user_id é a coluna canônica (moderna). Mantemos fallback por
+    // .eq('id', ...) pra rows antigas inseridas antes do refactor de schema —
+    // mesmo padrão usado em todos os outros pontos de auth do app (api routes,
+    // server actions). Sem o user_id-first o tenantId vinha undefined no home,
+    // zerando todas as metrics — incluindo Receita de Hoje.
+    let tenantId = null
+    const { data: profileByUserId } = await supabase
+        .from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
+    tenantId = profileByUserId?.tenant_id ?? null
+    if (!tenantId) {
+        const { data: profileById } = await supabase
+            .from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
+        tenantId = profileById?.tenant_id ?? null
+    }
 
     let activeOS = 0
     let lowStock = 0
