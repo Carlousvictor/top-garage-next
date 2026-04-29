@@ -319,6 +319,16 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     service_date_iso: serviceDateISO,
                     is_retroactive: isRetroactive,
                     payment_method: paymentMethod,
+                    // Campos da OS que o operador pode ter editado antes de
+                    // clicar Finalizar — passamos pra API persistir no mesmo
+                    // UPDATE da finalização, evitando perda silenciosa.
+                    client_id: clientId || null,
+                    vehicle_brand: brand,
+                    vehicle_model: model,
+                    observation,
+                    current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
+                    next_revision_date: nextRevisionDate || null,
+                    next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
                     items: items.map(item => ({
                         type: item.type,
                         product_id: item.product_id || null,

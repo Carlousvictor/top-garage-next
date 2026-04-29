@@ -30,16 +30,49 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Empresa não encontrada para este usuário.' }, { status: 403 })
     }
 
-    const { order_id, plate, total, service_date_iso, is_retroactive, payment_method, items = [] } = await request.json()
+    const {
+        order_id,
+        plate,
+        total,
+        service_date_iso,
+        is_retroactive,
+        payment_method,
+        items = [],
+        // Campos opcionais editados no formulário antes de clicar Finalizar.
+        // Usamos `... in body` no update pra só sobrescrever quando vieram —
+        // assim chamadas legadas (sem esses campos) não zeram dados no banco.
+        client_id,
+        vehicle_brand,
+        vehicle_model,
+        observation,
+        current_km,
+        next_revision_date,
+        next_revision_km,
+    } = await request.json()
 
     if (!order_id) {
         return NextResponse.json({ error: 'order_id é obrigatório.' }, { status: 400 })
     }
 
-    // 1. Update OS status
+    // 1. Update OS — finaliza status + persiste campos pendentes do formulário.
+    // Só sobrescrevemos campos opcionais quando vieram explicitamente no body,
+    // pra não zerar valores salvos quando um client legado chamar sem eles.
+    const orderUpdate = {
+        status: 'Concluido',
+        total,
+        created_at: service_date_iso,
+    }
+    if (client_id !== undefined) orderUpdate.client_id = client_id || null
+    if (vehicle_brand !== undefined) orderUpdate.vehicle_brand = vehicle_brand || null
+    if (vehicle_model !== undefined) orderUpdate.vehicle_model = vehicle_model || null
+    if (observation !== undefined) orderUpdate.observation = observation || null
+    if (current_km !== undefined) orderUpdate.current_km = current_km ?? null
+    if (next_revision_date !== undefined) orderUpdate.next_revision_date = next_revision_date || null
+    if (next_revision_km !== undefined) orderUpdate.next_revision_km = next_revision_km ?? null
+
     const { error: osError } = await supabase
         .from('service_orders')
-        .update({ status: 'Concluido', total, created_at: service_date_iso })
+        .update(orderUpdate)
         .eq('id', order_id)
         .eq('tenant_id', tenantId)
 
