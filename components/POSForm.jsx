@@ -27,6 +27,12 @@ export default function POSForm() {
     // selectedClient pra que o nome digitado seja aproveitado mesmo sem Enter/click.
     const [clientInputText, setClientInputText] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro')
+    // Pagamento dividido (até 2 formas). Quando off, usa paymentMethod único como hoje.
+    const [splitPayment, setSplitPayment] = useState(false)
+    const [payment1Method, setPayment1Method] = useState('Dinheiro')
+    const [payment1Amount, setPayment1Amount] = useState('')
+    const [payment2Method, setPayment2Method] = useState('Cartão de Débito')
+    const [payment2Amount, setPayment2Amount] = useState('')
     const [loading, setLoading] = useState(false)
 
     // Resolve o nome do cliente pra gravar na descrição da transação.
@@ -95,6 +101,35 @@ export default function POSForm() {
         return cart.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
     }
 
+    // Quando ativa o split, sugere split 50/50 baseado no total atual.
+    const handleToggleSplit = (checked) => {
+        setSplitPayment(checked)
+        if (checked) {
+            const total = calculateTotal()
+            const half = (total / 2).toFixed(2)
+            setPayment1Amount(half)
+            setPayment2Amount((total - parseFloat(half)).toFixed(2))
+        } else {
+            setPayment1Amount('')
+            setPayment2Amount('')
+        }
+    }
+
+    // Auto-balanço: ao editar a linha 1, linha 2 vira (total - linha1).
+    const handlePayment1AmountChange = (val) => {
+        setPayment1Amount(val)
+        const v1 = parseFloat(val) || 0
+        const total = calculateTotal()
+        setPayment2Amount((total - v1).toFixed(2))
+    }
+
+    const handlePayment2AmountChange = (val) => {
+        setPayment2Amount(val)
+        const v2 = parseFloat(val) || 0
+        const total = calculateTotal()
+        setPayment1Amount((total - v2).toFixed(2))
+    }
+
     // status: 'paid' = venda finalizada; 'pending' = venda em aberto.
     // Em ambos os casos o estoque é deduzido — o cliente saiu com o produto.
     // A diferença está só no transactions.status. Vendas em aberto aparecem
@@ -112,6 +147,24 @@ export default function POSForm() {
         if (isPending && !hasIdentifiedClient) {
             toast.warning('Para deixar a venda em aberto, informe o cliente — selecione um cadastrado ou digite o nome.')
             return
+        }
+
+        // Validate split payment when active and not pending.
+        if (splitPayment && !isPending) {
+            const v1 = parseFloat(payment1Amount) || 0
+            const v2 = parseFloat(payment2Amount) || 0
+            if (v1 <= 0 || v2 <= 0) {
+                toast.error('Ambas as formas de pagamento precisam ter valor maior que zero.')
+                return
+            }
+            if (Math.abs((v1 + v2) - total) > 0.01) {
+                toast.error(`Soma das duas formas (R$ ${(v1 + v2).toFixed(2)}) não confere com o total (R$ ${total.toFixed(2)}).`)
+                return
+            }
+            if (payment1Method === payment2Method) {
+                toast.error('As duas formas de pagamento devem ser diferentes.')
+                return
+            }
         }
 
         const ok = await confirm({
@@ -148,29 +201,54 @@ export default function POSForm() {
                 }
             }
 
-            // 2. Register Transaction (Income)
-            // clientLabel já resolvido acima — sempre tem valor (cadastrado, digitado ou "Consumidor").
+            // 2. Determine payment_method written to the transactions row
+            const isSplit = splitPayment && !isPending
+            const txPaymentMethod = isPending
+                ? null
+                : (isSplit ? 'Múltiplo' : paymentMethod)
+
             const description = isPending
                 ? `Venda Balcão (PDV) - Em Aberto - ${clientLabel}`
-                : `Venda Balcão (PDV) - ${paymentMethod} - ${clientLabel}`
+                : `Venda Balcão (PDV) - ${isSplit ? 'Múltiplo' : paymentMethod} - ${clientLabel}`
 
-            const { error: txError } = await supabase.from('transactions').insert([{
-                tenant_id: tenantId,
-                description,
-                type: 'income',
-                category: 'Venda de Peças',
-                amount: total,
-                status,
-                date: new Date().toISOString(),
-                payment_method: isPending ? null : paymentMethod
-            }])
+            // 3. Insert transaction (capture id for split)
+            const { data: txRows, error: txError } = await supabase
+                .from('transactions')
+                .insert([{
+                    tenant_id: tenantId,
+                    description,
+                    type: 'income',
+                    category: 'Venda de Peças',
+                    amount: total,
+                    status,
+                    date: new Date().toISOString(),
+                    payment_method: txPaymentMethod,
+                }])
+                .select('id')
 
             if (txError) throw txError
+
+            // 4. If split, insert two payment rows linked to the transaction
+            if (isSplit && txRows && txRows[0]) {
+                const transactionId = txRows[0].id
+                const v1 = parseFloat(payment1Amount)
+                const v2 = parseFloat(payment2Amount)
+                const { error: payError } = await supabase
+                    .from('transaction_payments')
+                    .insert([
+                        { transaction_id: transactionId, payment_method: payment1Method, amount: v1 },
+                        { transaction_id: transactionId, payment_method: payment2Method, amount: v2 },
+                    ])
+                if (payError) throw payError
+            }
 
             toast.success(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
             setCart([])
             setSelectedClient(null)
             setClientInputText('')
+            setSplitPayment(false)
+            setPayment1Amount('')
+            setPayment2Amount('')
             window.location.reload()
         } catch (error) {
             console.error(error)
@@ -371,16 +449,75 @@ export default function POSForm() {
 
                     <div className="mt-4 mb-4">
                         <label className="block text-sm text-gray-400 mb-2">Forma de Pagamento:</label>
-                        <select
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                            className="bg-neutral-800 border border-neutral-700 text-white rounded block w-full p-2"
-                        >
-                            <option>Dinheiro</option>
-                            <option>PIX</option>
-                            <option>Cartão de Crédito</option>
-                            <option>Cartão de Débito</option>
-                        </select>
+
+                        {!splitPayment ? (
+                            <select
+                                value={paymentMethod}
+                                onChange={(e) => setPaymentMethod(e.target.value)}
+                                className="bg-neutral-800 border border-neutral-700 text-white rounded block w-full p-2"
+                            >
+                                <option>Dinheiro</option>
+                                <option>PIX</option>
+                                <option>Cartão de Crédito</option>
+                                <option>Cartão de Débito</option>
+                            </select>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex gap-2">
+                                    <select
+                                        value={payment1Method}
+                                        onChange={(e) => setPayment1Method(e.target.value)}
+                                        className="bg-neutral-800 border border-neutral-700 text-white rounded block flex-1 p-2 text-sm"
+                                    >
+                                        <option>Dinheiro</option>
+                                        <option>PIX</option>
+                                        <option>Cartão de Crédito</option>
+                                        <option>Cartão de Débito</option>
+                                    </select>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="Valor"
+                                        value={payment1Amount}
+                                        onChange={(e) => handlePayment1AmountChange(e.target.value)}
+                                        className="bg-neutral-800 border border-neutral-700 text-white rounded block w-28 p-2 text-sm text-right"
+                                    />
+                                </div>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={payment2Method}
+                                        onChange={(e) => setPayment2Method(e.target.value)}
+                                        className="bg-neutral-800 border border-neutral-700 text-white rounded block flex-1 p-2 text-sm"
+                                    >
+                                        <option>Dinheiro</option>
+                                        <option>PIX</option>
+                                        <option>Cartão de Crédito</option>
+                                        <option>Cartão de Débito</option>
+                                    </select>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="Valor"
+                                        value={payment2Amount}
+                                        onChange={(e) => handlePayment2AmountChange(e.target.value)}
+                                        className="bg-neutral-800 border border-neutral-700 text-white rounded block w-28 p-2 text-sm text-right"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <label className="flex items-center gap-2 mt-2 text-xs text-gray-400 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={splitPayment}
+                                onChange={(e) => handleToggleSplit(e.target.checked)}
+                                className="w-4 h-4 text-red-600 bg-neutral-800 border-neutral-700 rounded"
+                            />
+                            Dividir em duas formas de pagamento
+                        </label>
+
                         <p className="text-[11px] text-gray-500 mt-1">
                             Ignorado se a venda for deixada em aberto.
                         </p>
