@@ -64,7 +64,7 @@ export const AuthProvider = ({ children }) => {
 
                 const { data: tenantData } = await supabase
                     .from('tenants')
-                    .select('name, logo_url, primary_color')
+                    .select('name, logo_url, primary_color, document')
                     .eq('id', profile.tenantId)
                     .single()
 

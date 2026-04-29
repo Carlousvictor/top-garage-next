@@ -6,7 +6,7 @@ import ServiceOrderPrint from './ServiceOrderPrint'
 
 export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
     const router = useRouter()
-    const { tenantId } = useAuth()
+    const { tenantId, tenant } = useAuth()
 
     const onCancel = () => router.push('/thirds')
     const onSave = () => {
@@ -292,6 +292,7 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                 order={order}
                 items={items}
                 client={{ name: observation || 'Terceiro/Avulso' }}
+                tenant={tenant}
             />
         </>
     )

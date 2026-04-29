@@ -1,7 +1,27 @@
 import React from 'react'
 
-export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod }) {
+// Cabeçalho do PDF: hoje só o Top Garage tem dados institucionais reais
+// cadastrados (endereço, IE, etc não estão na tabela `tenants` ainda — só
+// `document/phone/email`). Quando mais tenants reais entrarem, migrar esses
+// campos pra DB e ler do `tenant` em vez de hardcodar.
+const TOP_GARAGE_CNPJ_DIGITS = '37159925000190'
+const TOP_GARAGE_INFO = {
+    addressLine1: 'RUA A, 32 - JARDIM PRIMAVERA',
+    addressLine2: 'DUQUE DE CAXIAS - RJ - CEP: 25211-457',
+    phone: 'TEL: (21) 95925-7386',
+    fiscal: 'CNPJ: 37.159.925/0001-90 — IE: 79001252',
+    email: 'E-MAIL: topgaragerj@gmail.com',
+}
+
+const onlyDigits = (s) => (s || '').replace(/\D/g, '')
+
+export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant }) {
     if (!order) return null
+
+    // Match por CNPJ (não por nome) — nomes mudam, CNPJ é estável.
+    // Fallback seguro: tenant indefinido → cabeçalho genérico, nunca vaza
+    // dados do Top Garage pra outro tenant.
+    const isTopGarage = onlyDigits(tenant?.document) === TOP_GARAGE_CNPJ_DIGITS
 
     const formatDate = (dateString) => {
         if (!dateString) return ''
@@ -39,17 +59,24 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                 {/* Header */}
                 <div className="flex justify-between items-start border-b-2 border-gray-800 pb-2 mb-4">
                     <div className="flex flex-col justify-center">
-                        <img src="/logo.png" alt="Top Garage" className="h-32 object-contain mb-2 self-start" />
+                        {isTopGarage ? (
+                            <img src="/logo.png" alt="Top Garage" className="h-32 object-contain mb-2 self-start" />
+                        ) : (
+                            <span className="text-3xl font-black text-gray-700 tracking-tight self-start mb-2">garaje.io</span>
+                        )}
                     </div>
                     <div className="text-right">
                         <h2 className="text-3xl font-black uppercase text-gray-800 tracking-wide">Ordem de Serviço</h2>
                         <p className="text-4xl font-black text-red-600">#{order.id}</p>
-                        <div className="mt-2 text-xs text-gray-500 font-medium">
-                            <p>RUA EXEMPLO, 123 - BAIRRO</p>
-                            <p>RIO DE JANEIRO - RJ - CEP: 00000-000</p>
-                            <p>CNPJ: 00.000.000/0001-00</p>
-                            <p>TEL: (21) 99999-9999</p>
-                        </div>
+                        {isTopGarage && (
+                            <div className="mt-2 text-xs text-gray-500 font-medium">
+                                <p>{TOP_GARAGE_INFO.addressLine1}</p>
+                                <p>{TOP_GARAGE_INFO.addressLine2}</p>
+                                <p>{TOP_GARAGE_INFO.phone}</p>
+                                <p>{TOP_GARAGE_INFO.fiscal}</p>
+                                <p>{TOP_GARAGE_INFO.email}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

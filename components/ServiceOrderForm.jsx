@@ -44,7 +44,7 @@ const selectStyles = {
 export default function ServiceOrderForm({ order, initialClients = [], initialProducts = [], initialServices = [], initialItems = [] }) {
     const supabase = createClient()
     const router = useRouter()
-    const { companyId } = useAuth()
+    const { companyId, tenant } = useAuth()
 
     // Fallback if onCancel not passed -> use router.back() or push to /os
     const onCancel = () => router.push('/os')
@@ -909,6 +909,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                 client={clients.find(c => c.id == clientId) || { name: 'Consumidor Final' }}
                 vehicle={selectedVehicle}
                 paymentMethod={paymentMethod}
+                tenant={tenant}
             />
 
             <QuickClientModal
