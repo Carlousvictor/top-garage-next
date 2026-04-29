@@ -4,6 +4,7 @@ import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Plus, Building2, X, LogIn, CheckCircle2 } from 'lucide-react'
 import { createTenantAndAdmin, enterTenant } from '@/actions/admin'
+import { useToast } from '@/context/ToastContext'
 
 export default function SuperAdminPage() {
     const [companies, setCompanies] = useState([])
@@ -19,6 +20,7 @@ export default function SuperAdminPage() {
 
     const supabase = createClient()
     const router = useRouter()
+    const toast = useToast()
 
     useEffect(() => {
         checkAdminAccess()
@@ -61,7 +63,7 @@ export default function SuperAdminPage() {
         setEntering(tenantId)
         const result = await enterTenant(tenantId)
         if (result?.error) {
-            alert(`Erro: ${result.error}`)
+            toast.error(result.error)
             setEntering(null)
             return
         }

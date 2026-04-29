@@ -3,6 +3,8 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import CreatableSelect from 'react-select/creatable'
 import Select from 'react-select'
 import QuickProductModal from './QuickProductModal'
@@ -11,6 +13,8 @@ export default function POSForm() {
     const supabase = createClient()
     const router = useRouter()
     const { tenantId } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [products, setProducts] = useState([])
     const [clients, setClients] = useState([])
@@ -106,19 +110,23 @@ export default function POSForm() {
         // Pra venda em aberto exigimos cliente identificado (selecionado OU digitado).
         // "Consumidor" anônimo não é aceitável aqui — não dá pra cobrar depois.
         if (isPending && !hasIdentifiedClient) {
-            alert('Para deixar a venda em aberto, informe o cliente — selecione um cadastrado ou digite o nome.')
+            toast.warning('Para deixar a venda em aberto, informe o cliente — selecione um cadastrado ou digite o nome.')
             return
         }
 
-        const confirmMsg = isPending
-            ? `Deixar venda EM ABERTO no valor de R$ ${total.toFixed(2)} para ${clientLabel}?\nO estoque será baixado e a venda ficará pendente até ser finalizada.`
-            : `Confirmar venda no valor de R$ ${total.toFixed(2)}?`
-        if (!window.confirm(confirmMsg)) return
+        const ok = await confirm({
+            title: isPending ? 'Deixar venda em aberto' : 'Confirmar venda',
+            message: isPending
+                ? `Valor: R$ ${total.toFixed(2)}\nCliente: ${clientLabel}\n\nO estoque será baixado e a venda ficará pendente até ser finalizada.`
+                : `Valor total: R$ ${total.toFixed(2)}\n\nDeseja confirmar a venda?`,
+            confirmLabel: isPending ? 'Deixar em aberto' : 'Confirmar venda',
+        })
+        if (!ok) return
 
         setLoading(true)
 
         if (!tenantId) {
-            alert('Erro: Empresa não identificada.')
+            toast.error('Empresa não identificada.')
             setLoading(false)
             return
         }
@@ -159,14 +167,14 @@ export default function POSForm() {
 
             if (txError) throw txError
 
-            alert(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
+            toast.success(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
             setCart([])
             setSelectedClient(null)
             setClientInputText('')
             window.location.reload()
         } catch (error) {
             console.error(error)
-            alert('Erro ao finalizar venda: ' + error.message)
+            toast.error('Erro ao finalizar venda: ' + error.message)
         } finally {
             setLoading(false)
         }

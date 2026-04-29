@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import {
     ArrowRightLeft, TrendingUp, TrendingDown, DollarSign, Wallet,
     CreditCard, Landmark, PiggyBank, PlusCircle, Lock, Unlock,
@@ -14,6 +16,8 @@ export default function DailyMovement() {
     const router = useRouter()
     const searchParams = useSearchParams()
     const { companyId } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     // Date selection (defaults to today). Accepts ?date=YYYY-MM-DD to close past days.
     const initialDate = (() => {
@@ -109,7 +113,12 @@ export default function DailyMovement() {
 
     // Marca uma venda em aberto como finalizada — atualiza status e re-data pra now()
     const handleFinalizeOpenSale = async (saleId) => {
-        if (!window.confirm(`Finalizar esta venda como paga via ${finalizePaymentMethod}?`)) return
+        const ok = await confirm({
+            title: 'Finalizar venda',
+            message: `Forma de pagamento: ${finalizePaymentMethod}\n\nDeseja confirmar a finalização?`,
+            confirmLabel: 'Finalizar',
+        })
+        if (!ok) return
         setFinalizingId(saleId)
         try {
             const res = await fetch('/api/financial/open-sales', {
@@ -120,13 +129,13 @@ export default function DailyMovement() {
             })
             const json = await res.json()
             if (!res.ok) {
-                alert('Erro ao finalizar venda: ' + (json.error || res.statusText))
+                toast.error('Erro ao finalizar venda: ' + (json.error || res.statusText))
             } else {
                 await fetchOpenSales()
                 if (isToday) await fetchMovement()
             }
         } catch (err) {
-            alert('Erro ao finalizar venda: ' + err.message)
+            toast.error('Erro ao finalizar venda: ' + err.message)
         } finally {
             setFinalizingId(null)
         }
@@ -140,7 +149,7 @@ export default function DailyMovement() {
         e.preventDefault()
         if (!expenseDesc || !expenseAmount) return
         if (isClosed) {
-            alert('Movimento já fechado. Não é possível adicionar lançamentos.')
+            toast.warning('Movimento já fechado. Não é possível adicionar lançamentos.')
             return
         }
 
@@ -155,7 +164,7 @@ export default function DailyMovement() {
             })
             const json = await res.json()
             if (!res.ok) {
-                alert('Erro ao adicionar despesa: ' + (json.error || res.statusText))
+                toast.error('Erro ao adicionar despesa: ' + (json.error || res.statusText))
             } else {
                 setIsExpenseModalOpen(false)
                 setExpenseDesc('')
@@ -163,7 +172,7 @@ export default function DailyMovement() {
                 fetchMovement()
             }
         } catch (err) {
-            alert('Erro ao adicionar despesa: ' + err.message)
+            toast.error('Erro ao adicionar despesa: ' + err.message)
         } finally {
             setExpenseSubmitting(false)
         }
@@ -212,14 +221,14 @@ export default function DailyMovement() {
             })
             const json = await res.json()
             if (!res.ok) {
-                alert('Erro ao fechar movimento: ' + (json.error || res.statusText))
+                toast.error('Erro ao fechar movimento: ' + (json.error || res.statusText))
             } else {
                 setIsCloseModalOpen(false)
                 setCloseObservation('')
                 await fetchMovement()
             }
         } catch (err) {
-            alert('Erro ao fechar movimento: ' + err.message)
+            toast.error('Erro ao fechar movimento: ' + err.message)
         } finally {
             setClosing(false)
         }

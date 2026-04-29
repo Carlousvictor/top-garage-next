@@ -3,11 +3,15 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import { Activity, BarChart3, ArrowRight } from 'lucide-react'
 
 export default function FinancialDashboard({ initialTransactions, initialSummary }) {
     const supabase = createClient()
     const { companyId } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [activeTab, setActiveTab] = useState('overview') // 'overview', 'payable', 'receivable', 'cash_register'
     const [transactions, setTransactions] = useState(initialTransactions || [])
@@ -128,7 +132,7 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
         setLoading(true)
 
         if (!companyId) {
-            alert('Erro: Empresa não identificada.')
+            toast.error('Empresa não identificada.')
             setLoading(false)
             return
         }
@@ -160,14 +164,15 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
             })
             fetchTransactions()
         } catch (error) {
-            alert('Erro ao criar transação: ' + error.message)
+            toast.error('Erro ao criar transação: ' + error.message)
         } finally {
             setLoading(false)
         }
     }
 
     const handleMarkAsPaid = async (id, type) => {
-        if (!window.confirm('Confirmar recebimento/pagamento?')) return
+        const ok = await confirm({ title: 'Confirmar baixa', message: 'Deseja confirmar o recebimento/pagamento?', confirmLabel: 'Confirmar' })
+        if (!ok) return
 
         try {
             const { error } = await supabase
@@ -178,7 +183,7 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
             if (error) throw error
             fetchTransactions()
         } catch (error) {
-            alert('Erro ao atualizar status: ' + error.message)
+            toast.error('Erro ao atualizar status: ' + error.message)
         }
     }
 

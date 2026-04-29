@@ -2,11 +2,13 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 
 export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
     const router = useRouter()
     const { tenantId, tenant } = useAuth()
+    const toast = useToast()
 
     const onCancel = () => router.push('/thirds')
     const onSave = () => {
@@ -85,7 +87,7 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
 
             onSave()
         } catch (error) {
-            alert('Erro ao salvar OS: ' + error.message)
+            toast.error('Erro ao salvar OS: ' + error.message)
         } finally {
             setLoading(false)
         }

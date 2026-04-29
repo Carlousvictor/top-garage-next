@@ -1,6 +1,8 @@
 "use client"
 import { useState } from 'react'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 
 const EMPTY_VEHICLE = {
     plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '',
@@ -9,6 +11,8 @@ const EMPTY_VEHICLE = {
 }
 
 export default function ClientList({ initialClients }) {
+    const toast = useToast()
+    const confirm = useConfirm()
     const [clients, setClients] = useState(initialClients || [])
     const [isEditing, setIsEditing] = useState(false)
     const [currentClient, setCurrentClient] = useState({ name: '', email: '', phone: '', document: '' })
@@ -83,7 +87,8 @@ export default function ClientList({ initialClients }) {
     }
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Tem certeza que deseja excluir este cliente?')) return
+        const ok = await confirm({ title: 'Excluir cliente', message: 'Tem certeza que deseja excluir este cliente?', confirmLabel: 'Excluir', danger: true })
+        if (!ok) return
         const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE', credentials: 'include' })
         if (res.ok) {
             const json = await res.json()
@@ -96,7 +101,7 @@ export default function ClientList({ initialClients }) {
 
     const handleAddVehicle = async () => {
         if (!newVehicle.plate) {
-            alert('A placa do veículo é obrigatória.')
+            toast.warning('A placa do veículo é obrigatória.')
             return
         }
 
@@ -115,7 +120,7 @@ export default function ClientList({ initialClients }) {
                 setNewVehicle(EMPTY_VEHICLE)
                 fetchVehicles(currentClient.id)
             } catch (err) {
-                alert(err.message)
+                toast.error(err.message)
             } finally {
                 setLoading(false)
             }
@@ -127,11 +132,12 @@ export default function ClientList({ initialClients }) {
     }
 
     const handleDeleteVehicle = async (id) => {
-        if (!window.confirm('Tem certeza que deseja excluir este veículo?')) return
+        const ok = await confirm({ title: 'Excluir veículo', message: 'Tem certeza que deseja excluir este veículo?', confirmLabel: 'Excluir', danger: true })
+        if (!ok) return
         if (currentClient.id) {
             const res = await fetch(`/api/vehicles?id=${id}`, { method: 'DELETE', credentials: 'include' })
             if (res.ok) fetchVehicles(currentClient.id)
-            else alert('Erro ao excluir veículo.')
+            else toast.error('Erro ao excluir veículo.')
         } else {
             setVehicles(prev => prev.filter(v => v.id !== id))
         }
@@ -158,7 +164,7 @@ export default function ClientList({ initialClients }) {
                 state: data.uf || '',
             }))
         } catch (err) {
-            alert('Erro ao buscar veículo: ' + err.message)
+            toast.error('Erro ao buscar veículo: ' + err.message)
         } finally {
             setLoading(false)
         }

@@ -4,6 +4,8 @@ import { useRouter } from 'next/navigation'
 import Select from 'react-select'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 
 // Estilos do react-select alinhados ao padrão dark do app (mesmos do ProductList).
 const customStyles = {
@@ -33,6 +35,8 @@ export default function ServiceList({ initialServices }) {
     const supabase = createClient()
     const { companyId } = useAuth()
     const router = useRouter()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [services, setServices] = useState(initialServices || [])
     const [isEditing, setIsEditing] = useState(false)
@@ -54,7 +58,7 @@ export default function ServiceList({ initialServices }) {
         e.preventDefault()
 
         if (!companyId) {
-            alert('Erro: Empresa não identificada.')
+            toast.error('Empresa não identificada.')
             return
         }
 
@@ -77,13 +81,14 @@ export default function ServiceList({ initialServices }) {
             setIsEditing(false)
             router.refresh()
         } catch (error) {
-            alert('Erro ao salvar serviço: ' + error.message)
+            toast.error('Erro ao salvar serviço: ' + error.message)
         }
     }
 
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Tem certeza que deseja excluir este serviço?')) return
+        const ok = await confirm({ title: 'Excluir serviço', message: 'Tem certeza que deseja excluir este serviço?', confirmLabel: 'Excluir', danger: true })
+        if (!ok) return
         await supabase.from('services').delete().eq('id', id)
         fetchServices()
     }

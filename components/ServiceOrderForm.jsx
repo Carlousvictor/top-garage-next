@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
 import CreatableSelect from 'react-select/creatable'
 import QuickClientModal from './QuickClientModal'
@@ -45,6 +47,8 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     const supabase = createClient()
     const router = useRouter()
     const { companyId, tenant } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     // Fallback if onCancel not passed -> use router.back() or push to /os
     const onCancel = () => router.push('/os')
@@ -154,7 +158,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
             const product = products.find(p => p.id === parseInt(selectedProduct))
             if (product) {
                 if (product.quantity <= (product.min_quantity || 0)) {
-                    alert(`Atenção: O estoque de ${product.name} está em ${product.quantity}, atingindo ou abaixo do mínimo (${product.min_quantity || 0}).`)
+                    toast.warning(`Estoque de ${product.name} em ${product.quantity}, abaixo do mínimo (${product.min_quantity || 0}).`)
                 }
                 setItems([...items, {
                     type: 'product',
@@ -285,7 +289,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
             onSave()
         } catch (error) {
             console.error('Error saving order:', error)
-            alert('Erro ao salvar OS: ' + error.message)
+            toast.error('Erro ao salvar OS: ' + error.message)
         } finally {
             setLoading(false)
         }
@@ -299,10 +303,14 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
         const isRetroactive = serviceDate !== todayLocalISO
         const dateDisplay = serviceDate.split('-').reverse().join('/')
 
-        const confirmMsg = isRetroactive
-            ? `Finalizar OS RETROATIVA com data ${dateDisplay}?\n\nA receita financeira será lançada nessa data (não em hoje).\n\nO estoque NÃO será baixado — os itens dessa OS são considerados histórico (já saíram do depósito no passado).`
-            : 'Deseja realmente finalizar a OS? Isso irá baixar o estoque e lançar a receita.'
-        if (!window.confirm(confirmMsg)) return
+        const ok = await confirm({
+            title: isRetroactive ? 'Finalizar OS retroativa' : 'Finalizar OS',
+            message: isRetroactive
+                ? `Data: ${dateDisplay}\n\nA receita financeira será lançada nessa data (não em hoje).\n\nO estoque NÃO será baixado — os itens dessa OS são considerados histórico (já saíram do depósito no passado).`
+                : 'Isso irá baixar o estoque e lançar a receita financeira. Deseja continuar?',
+            confirmLabel: 'Finalizar',
+        })
+        if (!ok) return
         setLoading(true)
 
         try {
@@ -340,11 +348,11 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
             const json = await res.json()
             if (!res.ok) throw new Error(json.error || 'Erro ao finalizar OS.')
 
-            alert('OS Finalizada com sucesso!')
+            toast.success('OS Finalizada com sucesso!')
             onSave()
         } catch (error) {
             console.error('Erro ao finalizar:', error)
-            alert('Erro ao finalizar OS: ' + error.message)
+            toast.error('Erro ao finalizar OS: ' + error.message)
         } finally {
             setLoading(false)
         }

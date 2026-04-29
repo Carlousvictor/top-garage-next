@@ -2,6 +2,8 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
@@ -13,6 +15,8 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const { tenantId, loading: authLoading } = useAuth()
     const router = useRouter()
     const searchParams = useSearchParams()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [products, setProducts] = useState(initialProducts || [])
     const [suppliers, setSuppliers] = useState(initialSuppliers || [])
@@ -260,8 +264,21 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     }
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Tem certeza que deseja excluir este produto?')) return
-        await supabase.from('products').delete().eq('id', id)
+        const product = products.find(p => p.id === id)
+        const ok = await confirm({
+            title: 'Excluir produto',
+            message: `Tem certeza que deseja excluir "${product?.name || 'este produto'}"?\nEsta ação é permanente. OS antigas continuam acessíveis, mas perdem o vínculo com este item do estoque.`,
+            confirmLabel: 'Excluir',
+            cancelLabel: 'Cancelar',
+            danger: true,
+        })
+        if (!ok) return
+        const { error } = await supabase.from('products').delete().eq('id', id)
+        if (error) {
+            toast.error('Erro ao excluir produto: ' + error.message)
+            return
+        }
+        toast.success('Produto excluído.')
         router.refresh()
         window.location.reload()
     }

@@ -1,16 +1,19 @@
 "use client"
 import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
+import { useConfirm } from '../context/ConfirmContext'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
 export default function ThirdPartyOrderList({ initialOrders }) {
     const supabase = createClient()
     const router = useRouter()
+    const confirm = useConfirm()
     const [orders, setOrders] = useState(initialOrders || [])
 
     const handleDelete = async (id) => {
-        if (!window.confirm('Excluir esta OS de Terceiros?')) return
+        const ok = await confirm({ title: 'Excluir OS de Terceiros', message: 'Esta ação não pode ser desfeita.', confirmLabel: 'Excluir', danger: true })
+        if (!ok) return
         await supabase.from('service_order_items').delete().eq('service_order_id', id)
         await supabase.from('service_orders').delete().eq('id', id)
         setOrders(prev => prev.filter(o => o.id !== id))
