@@ -618,6 +618,23 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                         </label>
                     </div>
 
+                    {/* Observações da OS — campo fixo separado da listagem de itens.
+                        Texto livre que aparece no PDF impresso na seção
+                        "Observações Técnicas". */}
+                    <div>
+                        <label htmlFor="osObservation" className="block text-sm font-medium text-gray-300 mb-1">
+                            Observações
+                        </label>
+                        <textarea
+                            id="osObservation"
+                            value={observation}
+                            onChange={(e) => setObservation(e.target.value)}
+                            rows={3}
+                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            placeholder="Notas técnicas, instruções pro cliente, condições especiais... aparece no PDF da OS."
+                        />
+                    </div>
+
                     <hr className="border-neutral-800" />
 
                     {/* Items Selection */}
@@ -842,21 +859,6 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                 </tfoot>
                             </table>
                         </div>
-                    </div>
-
-                    {/* Observações da OS — texto livre que aparece no PDF
-                        impresso na seção "Observações Técnicas". */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-1">
-                            Observações (OBS)
-                        </label>
-                        <textarea
-                            value={observation}
-                            onChange={(e) => setObservation(e.target.value)}
-                            rows={3}
-                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                            placeholder="Notas técnicas, instruções pro cliente, condições especiais... aparece no PDF da OS."
-                        />
                     </div>
 
                     <div className="flex justify-end gap-3 pt-4">
