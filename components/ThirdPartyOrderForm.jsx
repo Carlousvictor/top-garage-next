@@ -158,22 +158,28 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-300 mb-1">Data da OS</label>
+                        {/* Data da OS — mesmo padrão visual da OS normal (md:col-span-2 + md:w-72).
+                            Permite cadastrar OS Terceiros retroativa pra importar histórico do sistema antigo. */}
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-300 mb-1">
+                                Data da OS
+                            </label>
                             <input
                                 type="date"
                                 value={serviceDate}
                                 max={todayLocalISO}
                                 onChange={(e) => setServiceDate(e.target.value)}
-                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-72 p-2.5"
                             />
                             {serviceDate !== todayLocalISO && (
                                 <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
                                     <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                    OS retroativa — gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>.
+                                    OS retroativa — será gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>.
                                 </p>
                             )}
-                            <p className="text-[11px] text-gray-500 mt-1">Default = hoje. Use uma data passada para histórico.</p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                                Use uma data passada para importar histórico do sistema antigo. Default = hoje.
+                            </p>
                         </div>
                     </div>
 
