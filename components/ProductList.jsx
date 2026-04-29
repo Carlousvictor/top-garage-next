@@ -273,14 +273,19 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
             danger: true,
         })
         if (!ok) return
-        const { error } = await supabase.from('products').delete().eq('id', id)
-        if (error) {
-            toast.error('Erro ao excluir produto: ' + error.message)
-            return
+        try {
+            const res = await fetch(`/api/products/${id}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao excluir produto')
+            toast.success('Produto excluído.')
+            setProducts(prev => prev.filter(p => p.id !== id))
+            router.refresh()
+        } catch (err) {
+            toast.error(err.message)
         }
-        toast.success('Produto excluído.')
-        router.refresh()
-        window.location.reload()
     }
 
     // Predicado de "estoque baixo" — mesmo critério que o dashboard usa.
