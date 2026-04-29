@@ -68,6 +68,11 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     const [currentKm, setCurrentKm] = useState(order?.current_km?.toString() || '')
     const [nextRevisionKm, setNextRevisionKm] = useState(order?.next_revision_km?.toString() || '')
     const [paymentMethod, setPaymentMethod] = useState('Dinheiro') // New state
+    const [splitPayment, setSplitPayment] = useState(false)
+    const [payment1Method, setPayment1Method] = useState('Dinheiro')
+    const [payment1Amount, setPayment1Amount] = useState('')
+    const [payment2Method, setPayment2Method] = useState('Cartão de Débito')
+    const [payment2Amount, setPayment2Amount] = useState('')
     const [items, setItems] = useState(initialItems)
     // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
     // importar histórico do sistema antigo. Salva em service_orders.created_at
@@ -243,6 +248,33 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
         return items.reduce((acc, item) => acc + ((item.quantity ?? 1) * (item.unit_price ?? 0)), 0)
     }
 
+    const handleToggleSplit = (checked) => {
+        setSplitPayment(checked)
+        if (checked) {
+            const total = calculateTotal()
+            const half = (total / 2).toFixed(2)
+            setPayment1Amount(half)
+            setPayment2Amount((total - parseFloat(half)).toFixed(2))
+        } else {
+            setPayment1Amount('')
+            setPayment2Amount('')
+        }
+    }
+
+    const handlePayment1AmountChange = (val) => {
+        setPayment1Amount(val)
+        const v1 = parseFloat(val) || 0
+        const total = calculateTotal()
+        setPayment2Amount((total - v1).toFixed(2))
+    }
+
+    const handlePayment2AmountChange = (val) => {
+        setPayment2Amount(val)
+        const v2 = parseFloat(val) || 0
+        const total = calculateTotal()
+        setPayment1Amount((total - v2).toFixed(2))
+    }
+
     const handleSubmit = async (e) => {
         e.preventDefault()
         setLoading(true)
@@ -303,6 +335,30 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
         const isRetroactive = serviceDate !== todayLocalISO
         const dateDisplay = serviceDate.split('-').reverse().join('/')
 
+        // Validate split payment when active
+        const total = calculateTotal()
+        let payments = null
+        if (splitPayment) {
+            const v1 = parseFloat(payment1Amount) || 0
+            const v2 = parseFloat(payment2Amount) || 0
+            if (v1 <= 0 || v2 <= 0) {
+                toast.error('Ambas as formas de pagamento precisam ter valor maior que zero.')
+                return
+            }
+            if (Math.abs((v1 + v2) - total) > 0.01) {
+                toast.error(`Soma das duas formas (R$ ${(v1 + v2).toFixed(2)}) não confere com o total (R$ ${total.toFixed(2)}).`)
+                return
+            }
+            if (payment1Method === payment2Method) {
+                toast.error('As duas formas de pagamento devem ser diferentes.')
+                return
+            }
+            payments = [
+                { method: payment1Method, amount: v1 },
+                { method: payment2Method, amount: v2 },
+            ]
+        }
+
         const ok = await confirm({
             title: isRetroactive ? 'Finalizar OS retroativa' : 'Finalizar OS',
             message: isRetroactive
@@ -311,11 +367,10 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
             confirmLabel: 'Finalizar',
         })
         if (!ok) return
+
         setLoading(true)
 
         try {
-            const total = calculateTotal()
-
             const res = await fetch('/api/service-orders/finish', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -327,9 +382,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     service_date_iso: serviceDateISO,
                     is_retroactive: isRetroactive,
                     payment_method: paymentMethod,
-                    // Campos da OS que o operador pode ter editado antes de
-                    // clicar Finalizar — passamos pra API persistir no mesmo
-                    // UPDATE da finalização, evitando perda silenciosa.
+                    payments,  // NEW: null when single, [{method,amount}] when split
                     client_id: clientId || null,
                     vehicle_brand: brand,
                     vehicle_model: model,
@@ -341,7 +394,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                         type: item.type,
                         product_id: item.product_id || null,
                         quantity: item.quantity,
-                    }))
+                    })),
                 })
             })
 
@@ -892,25 +945,57 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                             </button>
                         )}
                         {order && order.status !== 'Concluido' && !isEstimate && (
-                            <div className="flex gap-2 items-center mr-auto">
-                                <select
-                                    value={paymentMethod}
-                                    onChange={(e) => setPaymentMethod(e.target.value)}
-                                    className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block p-2.5 h-full"
-                                >
-                                    <option value="Dinheiro">Dinheiro</option>
-                                    <option value="PIX">PIX</option>
-                                    <option value="Cartão de Crédito">Cartão de Crédito</option>
-                                    <option value="Cartão de Débito">Cartão de Débito</option>
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={handleFinish}
-                                    disabled={loading}
-                                    className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-lg shadow-green-900/20 transition-colors whitespace-nowrap"
-                                >
-                                    Finalizar OS (Receber)
-                                </button>
+                            <div className="flex flex-col gap-2 mr-auto items-stretch">
+                                {!splitPayment ? (
+                                    <div className="flex gap-2 items-center">
+                                        <select
+                                            value={paymentMethod}
+                                            onChange={(e) => setPaymentMethod(e.target.value)}
+                                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block p-2.5"
+                                        >
+                                            <option value="Dinheiro">Dinheiro</option>
+                                            <option value="PIX">PIX</option>
+                                            <option value="Cartão de Crédito">Cartão de Crédito</option>
+                                            <option value="Cartão de Débito">Cartão de Débito</option>
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={handleFinish}
+                                            disabled={loading}
+                                            className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-lg shadow-green-900/20 transition-colors whitespace-nowrap"
+                                        >
+                                            Finalizar OS (Receber)
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-2 bg-neutral-950 border border-neutral-800 rounded-lg p-3">
+                                        <div className="flex gap-2">
+                                            <select value={payment1Method} onChange={(e) => setPayment1Method(e.target.value)} className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg flex-1 p-2">
+                                                <option>Dinheiro</option><option>PIX</option><option>Cartão de Crédito</option><option>Cartão de Débito</option>
+                                            </select>
+                                            <input type="number" step="0.01" min="0" placeholder="Valor" value={payment1Amount} onChange={(e) => handlePayment1AmountChange(e.target.value)} className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg w-28 p-2 text-right" />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <select value={payment2Method} onChange={(e) => setPayment2Method(e.target.value)} className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg flex-1 p-2">
+                                                <option>Dinheiro</option><option>PIX</option><option>Cartão de Crédito</option><option>Cartão de Débito</option>
+                                            </select>
+                                            <input type="number" step="0.01" min="0" placeholder="Valor" value={payment2Amount} onChange={(e) => handlePayment2AmountChange(e.target.value)} className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg w-28 p-2 text-right" />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleFinish}
+                                            disabled={loading}
+                                            className="px-5 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-lg shadow-green-900/20 transition-colors whitespace-nowrap"
+                                        >
+                                            Finalizar OS (Receber)
+                                        </button>
+                                    </div>
+                                )}
+
+                                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                                    <input type="checkbox" checked={splitPayment} onChange={(e) => handleToggleSplit(e.target.checked)} className="w-4 h-4 text-red-600 bg-neutral-800 border-neutral-700 rounded" />
+                                    Dividir em duas formas de pagamento
+                                </label>
                             </div>
                         )}
                         <button

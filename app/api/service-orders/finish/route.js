@@ -37,6 +37,7 @@ export async function POST(request) {
         service_date_iso,
         is_retroactive,
         payment_method,
+        payments,  // NEW: optional [{ method, amount }] for split payments
         items = [],
         // Campos opcionais editados no formulário antes de clicar Finalizar.
         // Usamos `... in body` no update pra só sobrescrever quando vieram —
@@ -99,19 +100,39 @@ export async function POST(request) {
     }
 
     // 3. Insert financial transaction
-    const { error: txError } = await supabase.from('transactions').insert([{
-        tenant_id: tenantId,
-        description: `Receita OS #${order_id} - Placa ${plate}`,
-        type: 'income',
-        category: 'Service',
-        amount: total,
-        related_os_id: order_id,
-        status: 'paid',
-        payment_method: payment_method || 'Dinheiro',
-        date: service_date_iso,
-    }])
+    const isSplit = Array.isArray(payments) && payments.length >= 2
+    const { data: txRow, error: txError } = await supabase
+        .from('transactions')
+        .insert([{
+            tenant_id: tenantId,
+            description: `Receita OS #${order_id} - Placa ${plate}`,
+            type: 'income',
+            category: 'Service',
+            amount: total,
+            related_os_id: order_id,
+            status: 'paid',
+            payment_method: isSplit ? 'Múltiplo' : (payment_method || 'Dinheiro'),
+            date: service_date_iso,
+        }])
+        .select('id')
+        .single()
 
     if (txError) return NextResponse.json({ error: txError.message }, { status: 400 })
+
+    // 4. If split, persist the breakdown
+    if (isSplit) {
+        const paymentRows = payments.map(p => ({
+            transaction_id: txRow.id,
+            payment_method: p.method,
+            amount: Number(p.amount),
+        }))
+        const { error: payError } = await supabase
+            .from('transaction_payments')
+            .insert(paymentRows)
+        if (payError) {
+            return NextResponse.json({ error: 'Erro ao registrar formas de pagamento: ' + payError.message }, { status: 400 })
+        }
+    }
 
     return NextResponse.json({ success: true })
 }
