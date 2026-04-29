@@ -8,7 +8,8 @@ import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FileText, AlertCircle, X as XIcon } from 'lucide-react'
+import { FileText, AlertCircle, X as XIcon, Printer } from 'lucide-react'
+import LowStockReport from './LowStockReport'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
     const supabase = createClient()
@@ -471,6 +472,16 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             </span>
                         )}
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => window.print()}
+                        disabled={lowStockCount === 0}
+                        title={lowStockCount === 0 ? 'Nenhum item abaixo do mínimo' : 'Imprimir relatório de pedido'}
+                        className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                        <Printer className="w-4 h-4" />
+                        Relatório de pedido
+                    </button>
                     <Link
                         href="/import"
                         className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border border-neutral-700 flex items-center gap-2"
@@ -775,6 +786,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     </div>
                 </form>
             )}
+            <LowStockReport products={products.filter(isLowStock)} />
         </div>
     )
 }
