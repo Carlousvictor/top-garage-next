@@ -19,6 +19,28 @@ function suggestedQty(p) {
     return Math.max(min * 2 - cur, min)
 }
 
+// Pedido de compra só faz sentido pra item que precisa ser comprado de verdade.
+// Exclui ruído de produtos sem mínimo configurado e sem estoque negativo
+// (caso clássico: produto cadastrado mas sem reposição definida).
+function isOrderable(p) {
+    return suggestedQty(p) > 0
+}
+
+// Alguns produtos têm o SKU prefixado no nome no cadastro
+// (ex: "EAFB007 - FILTRO DE ÓLEO"). No relatório isso fica redundante
+// porque a coluna SKU já mostra o código. Remove o prefixo "<sku> - " ou "<sku> "
+// pra liberar espaço pro nome real do produto.
+function cleanProductName(p) {
+    const name = p.name || ''
+    const sku = p.sku
+    if (!sku) return name
+    const prefixes = [`${sku} - `, `${sku} – `, `${sku}—`, `${sku} `]
+    for (const pre of prefixes) {
+        if (name.startsWith(pre)) return name.slice(pre.length)
+    }
+    return name
+}
+
 function groupBySupplier(products) {
     const groups = new Map()
     for (const p of products) {
@@ -47,11 +69,17 @@ export default function LowStockReport({ products = [] }) {
     const issueDate = now.toLocaleDateString('pt-BR')
     const issueTime = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
     const docNumber = buildDocNumber(now)
-    const groups = groupBySupplier(products)
 
-    const grandTotal = products.reduce((acc, p) => acc + suggestedQty(p) * Number(p.cost_price || 0), 0)
-    const totalItems = products.length
+    // Filtra itens "ruidosos" — só mostra o que realmente precisa de pedido (qtd sugerida > 0).
+    // Itens com min=0 e atual=0 ficam de fora porque não geram demanda de compra.
+    const orderable = products.filter(isOrderable)
+    const groups = groupBySupplier(orderable)
+
+    const grandTotal = orderable.reduce((acc, p) => acc + suggestedQty(p) * Number(p.cost_price || 0), 0)
+    const totalItems = orderable.length
     const totalSuppliers = groups.length
+    // Quantos foram ocultados — informa o operador no rodapé pra ele saber que existe ruído filtrado.
+    const skippedCount = products.length - orderable.length
 
     return (
         <div className="hidden print:block print:text-black print:bg-white">
@@ -60,8 +88,11 @@ export default function LowStockReport({ products = [] }) {
                 @media print {
                     .lsr-root { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #000; }
                     .lsr-num { font-variant-numeric: tabular-nums; }
-                    .lsr-supplier { page-break-inside: avoid; break-inside: avoid; }
+                    /* NÃO use page-break-inside: avoid no .lsr-supplier — quando o bloco é grande,
+                       o navegador empurra ele inteiro pra próxima página, deixando a página
+                       atual em branco. Cada linha de item já tem proteção própria. */
                     .lsr-row { page-break-inside: avoid; break-inside: avoid; }
+                    .lsr-keep-together { page-break-inside: avoid; break-inside: avoid; }
                 }
             `}</style>
 
@@ -111,7 +142,9 @@ export default function LowStockReport({ products = [] }) {
                 {/* Empty state */}
                 {totalItems === 0 && (
                     <p className="text-center py-12 text-gray-600 text-sm">
-                        Nenhum item com estoque abaixo do mínimo no momento da emissão.
+                        {products.length === 0
+                            ? 'Nenhum item com estoque abaixo do mínimo no momento da emissão.'
+                            : `${products.length} item(ns) marcados como estoque baixo no sistema, mas nenhum gera necessidade de pedido (atual ≥ 0 e mínimo = 0).`}
                     </p>
                 )}
 
@@ -120,7 +153,7 @@ export default function LowStockReport({ products = [] }) {
                     const subtotal = items.reduce((acc, p) => acc + suggestedQty(p) * Number(p.cost_price || 0), 0)
                     const totalUnits = items.reduce((acc, p) => acc + suggestedQty(p), 0)
                     return (
-                        <section key={supplier} className="lsr-supplier mb-5 border border-black">
+                        <section key={supplier} className="mb-5 border border-black">
                             {/* Supplier bar */}
                             <header className="bg-black text-white px-3 py-1.5 flex items-center justify-between">
                                 <div className="flex items-baseline gap-3 min-w-0">
@@ -141,25 +174,26 @@ export default function LowStockReport({ products = [] }) {
                                     const qty = suggestedQty(p)
                                     const cost = Number(p.cost_price || 0)
                                     const lineTotal = qty * cost
+                                    const displayName = cleanProductName(p)
                                     return (
                                         <div
                                             key={p.id}
                                             role="listitem"
-                                            className={`lsr-row flex items-center gap-3 px-3 py-2 ${i % 2 === 1 ? 'bg-gray-50' : ''} ${i < items.length - 1 ? 'border-b border-gray-300' : ''}`}
+                                            className={`lsr-row flex items-start gap-3 px-3 py-2 ${i % 2 === 1 ? 'bg-gray-50' : ''} ${i < items.length - 1 ? 'border-b border-gray-300' : ''}`}
                                         >
                                             {/* # */}
-                                            <span className="lsr-num text-[10px] text-gray-600 w-6 text-center shrink-0">
+                                            <span className="lsr-num text-[10px] text-gray-600 w-6 text-center shrink-0 pt-0.5">
                                                 {String(i + 1).padStart(2, '0')}
                                             </span>
 
                                             {/* SKU */}
-                                            <span className="font-mono text-[10px] tracking-tight w-20 shrink-0 text-gray-800">
+                                            <span className="font-mono text-[10px] tracking-tight w-20 shrink-0 text-gray-800 pt-0.5 break-all">
                                                 {p.sku || '—'}
                                             </span>
 
-                                            {/* Produto + marca */}
+                                            {/* Produto + marca — nome completo (sem truncate, quebra em 2 linhas se precisar) */}
                                             <div className="flex-1 min-w-0 leading-tight">
-                                                <p className="text-[11.5px] font-semibold truncate">{p.name}</p>
+                                                <p className="text-[11.5px] font-semibold break-words">{displayName}</p>
                                                 {p.brands?.name && (
                                                     <p className="text-[9px] uppercase tracking-wide text-gray-600 mt-0.5">
                                                         {p.brands.name}
@@ -167,26 +201,27 @@ export default function LowStockReport({ products = [] }) {
                                                 )}
                                             </div>
 
-                                            {/* Estoque */}
-                                            <div className="text-[10px] lsr-num text-gray-800 w-44 shrink-0 leading-tight">
-                                                <p>
-                                                    Atual: <strong>{p.quantity}</strong>
-                                                    <span className="text-gray-500"> · </span>
-                                                    Mín: <strong>{p.min_quantity || 0}</strong>
-                                                </p>
-                                                <p className="mt-0.5">
-                                                    Pedir: <strong className="text-[12px]">{qty}</strong> un
-                                                </p>
+                                            {/* Pedir — destaque (o número que importa pro fornecedor) */}
+                                            <div className="text-center w-16 shrink-0 leading-tight pt-0.5">
+                                                <p className="text-[8.5px] uppercase tracking-wider text-gray-600">Pedir</p>
+                                                <p className="lsr-num text-[15px] font-black leading-none mt-0.5">{qty}</p>
+                                                <p className="text-[8px] text-gray-600 mt-0.5">unidades</p>
+                                            </div>
+
+                                            {/* Atual / Mín — referência secundária, 1 linha compacta */}
+                                            <div className="text-[9px] lsr-num text-gray-700 w-20 shrink-0 leading-snug pt-0.5">
+                                                <p>Atual: <strong className="text-gray-900">{p.quantity}</strong></p>
+                                                <p>Mínimo: <strong className="text-gray-900">{p.min_quantity || 0}</strong></p>
                                             </div>
 
                                             {/* Último valor de compra */}
-                                            <div className="text-right w-28 shrink-0 leading-tight">
+                                            <div className="text-right w-24 shrink-0 leading-tight pt-0.5">
                                                 <p className="text-[8.5px] uppercase tracking-wider text-gray-600">Últ. compra</p>
                                                 <p className="lsr-num text-[11px] font-semibold">{formatBRL(cost)}</p>
                                             </div>
 
                                             {/* Subtotal da linha */}
-                                            <div className="text-right w-28 shrink-0 leading-tight border-l border-gray-300 pl-3">
+                                            <div className="text-right w-24 shrink-0 leading-tight pt-0.5 border-l border-gray-300 pl-3">
                                                 <p className="text-[8.5px] uppercase tracking-wider text-gray-600">Subtotal</p>
                                                 <p className="lsr-num text-[12px] font-black">{formatBRL(lineTotal)}</p>
                                             </div>
@@ -228,6 +263,11 @@ export default function LowStockReport({ products = [] }) {
                             <li><strong>Último valor de compra</strong> = valor pago na última nota fiscal lançada para o item (campo <span className="font-mono">cost_price</span>).</li>
                             <li>Confirme valores e disponibilidade com o fornecedor antes de fechar o pedido — preços podem ter variado.</li>
                             <li>Itens sem fornecedor cadastrado aparecem ao final agrupados como &quot;Sem fornecedor&quot;.</li>
+                            {skippedCount > 0 && (
+                                <li className="text-gray-700">
+                                    {skippedCount} item(ns) com estoque baixo foram <strong>omitidos</strong> deste pedido por terem qtd sugerida zero (sem mínimo configurado e sem estoque negativo). Verifique cadastros se algum deveria estar aqui.
+                                </li>
+                            )}
                         </ul>
                     </section>
                 )}
