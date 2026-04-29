@@ -19,7 +19,6 @@ function suggestedQty(p) {
     return Math.max(min * 2 - cur, min)
 }
 
-// Groups products by supplier name (or "Sem fornecedor")
 function groupBySupplier(products) {
     const groups = new Map()
     for (const p of products) {
@@ -34,8 +33,6 @@ function groupBySupplier(products) {
     })
 }
 
-// Document number derived from issue date — PED-YYYYMMDD-HHMM
-// Lets the report be referenced/filed without a DB sequence.
 function buildDocNumber(d) {
     const y = d.getFullYear()
     const mo = String(d.getMonth() + 1).padStart(2, '0')
@@ -58,22 +55,18 @@ export default function LowStockReport({ products = [] }) {
 
     return (
         <div className="hidden print:block print:text-black print:bg-white">
-            {/* Print page setup — A4 with comfortable margins */}
             <style>{`
                 @page { size: A4; margin: 14mm 12mm 18mm 12mm; }
                 @media print {
                     .lsr-root { font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #000; }
                     .lsr-num { font-variant-numeric: tabular-nums; }
                     .lsr-supplier { page-break-inside: avoid; break-inside: avoid; }
-                    table { page-break-inside: auto; }
-                    tr { page-break-inside: avoid; break-inside: avoid; }
-                    thead { display: table-header-group; }
-                    tfoot { display: table-row-group; }
+                    .lsr-row { page-break-inside: avoid; break-inside: avoid; }
                 }
             `}</style>
 
             <div className="lsr-root text-[11px] leading-snug">
-                {/* HEADER — 3 columns: issuer | doc title | doc meta */}
+                {/* HEADER */}
                 <header className="flex items-stretch justify-between gap-6 pb-3 mb-4 border-b-[3px] border-black">
                     <div className="flex-1 min-w-0">
                         <h1 className="text-[20px] font-black tracking-tight leading-tight">{TG.name}</h1>
@@ -99,7 +92,7 @@ export default function LowStockReport({ products = [] }) {
                     </div>
                 </header>
 
-                {/* SUMMARY BOX — totals upfront so the receiver scans this first */}
+                {/* SUMMARY BOX */}
                 <section className="grid grid-cols-3 gap-2 mb-5 border border-black">
                     <div className="px-3 py-2 border-r border-black">
                         <p className="text-[9px] uppercase tracking-[0.15em] text-gray-700">Itens a pedir</p>
@@ -122,13 +115,13 @@ export default function LowStockReport({ products = [] }) {
                     </p>
                 )}
 
-                {/* SUPPLIER BLOCKS — each is its own bordered "purchase order" section */}
+                {/* SUPPLIER BLOCKS — list of rows, no <table> */}
                 {groups.map(([supplier, items], gIdx) => {
                     const subtotal = items.reduce((acc, p) => acc + suggestedQty(p) * Number(p.cost_price || 0), 0)
                     const totalUnits = items.reduce((acc, p) => acc + suggestedQty(p), 0)
                     return (
                         <section key={supplier} className="lsr-supplier mb-5 border border-black">
-                            {/* Supplier header bar */}
+                            {/* Supplier bar */}
                             <header className="bg-black text-white px-3 py-1.5 flex items-center justify-between">
                                 <div className="flex items-baseline gap-3 min-w-0">
                                     <span className="text-[10px] uppercase tracking-[0.18em] opacity-80 shrink-0">
@@ -142,66 +135,78 @@ export default function LowStockReport({ products = [] }) {
                                 </div>
                             </header>
 
-                            {/* Items table */}
-                            <table className="w-full border-collapse text-[10px]">
-                                <colgroup>
-                                    <col style={{ width: '8%' }} />   {/* # */}
-                                    <col style={{ width: '14%' }} />  {/* SKU */}
-                                    <col />                             {/* Produto */}
-                                    <col style={{ width: '15%' }} />  {/* Marca */}
-                                    <col style={{ width: '7%' }} />   {/* Atual */}
-                                    <col style={{ width: '7%' }} />   {/* Mín */}
-                                    <col style={{ width: '8%' }} />   {/* Pedir */}
-                                    <col style={{ width: '11%' }} /> {/* Unit */}
-                                    <col style={{ width: '13%' }} /> {/* Subtotal */}
-                                </colgroup>
-                                <thead>
-                                    <tr className="border-b-2 border-black bg-gray-100">
-                                        <th className="text-center py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Item</th>
-                                        <th className="text-left py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">SKU</th>
-                                        <th className="text-left py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Descrição do produto</th>
-                                        <th className="text-left py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Marca</th>
-                                        <th className="text-center py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Atual</th>
-                                        <th className="text-center py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Mín</th>
-                                        <th className="text-center py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Pedir</th>
-                                        <th className="text-right py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Unitário</th>
-                                        <th className="text-right py-1.5 px-1.5 font-bold uppercase tracking-wide text-[9px]">Subtotal</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {items.map((p, i) => {
-                                        const qty = suggestedQty(p)
-                                        const cost = Number(p.cost_price || 0)
-                                        const lineTotal = qty * cost
-                                        return (
-                                            <tr key={p.id} className="border-b border-gray-400 align-top">
-                                                <td className="py-1 px-1.5 text-center lsr-num text-gray-700">{String(i + 1).padStart(2, '0')}</td>
-                                                <td className="py-1 px-1.5 font-mono text-[9.5px] tracking-tight">{p.sku || '—'}</td>
-                                                <td className="py-1 px-1.5 leading-snug">{p.name}</td>
-                                                <td className="py-1 px-1.5 text-gray-800">{p.brands?.name || '—'}</td>
-                                                <td className="py-1 px-1.5 text-center lsr-num">{p.quantity}</td>
-                                                <td className="py-1 px-1.5 text-center lsr-num text-gray-700">{p.min_quantity || 0}</td>
-                                                <td className="py-1 px-1.5 text-center lsr-num font-bold">{qty}</td>
-                                                <td className="py-1 px-1.5 text-right lsr-num">{formatBRL(cost)}</td>
-                                                <td className="py-1 px-1.5 text-right lsr-num font-bold">{formatBRL(lineTotal)}</td>
-                                            </tr>
-                                        )
-                                    })}
-                                </tbody>
-                                <tfoot>
-                                    <tr className="border-t-2 border-black bg-gray-50">
-                                        <td colSpan="6" className="py-1.5 px-1.5"></td>
-                                        <td className="py-1.5 px-1.5 text-center lsr-num font-bold">{totalUnits}</td>
-                                        <td className="py-1.5 px-1.5 text-right text-[10px] uppercase tracking-wide font-bold">Subtotal</td>
-                                        <td className="py-1.5 px-1.5 text-right lsr-num font-black">{formatBRL(subtotal)}</td>
-                                    </tr>
-                                </tfoot>
-                            </table>
+                            {/* Item rows — line by line, no table */}
+                            <div role="list">
+                                {items.map((p, i) => {
+                                    const qty = suggestedQty(p)
+                                    const cost = Number(p.cost_price || 0)
+                                    const lineTotal = qty * cost
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            role="listitem"
+                                            className={`lsr-row flex items-center gap-3 px-3 py-2 ${i % 2 === 1 ? 'bg-gray-50' : ''} ${i < items.length - 1 ? 'border-b border-gray-300' : ''}`}
+                                        >
+                                            {/* # */}
+                                            <span className="lsr-num text-[10px] text-gray-600 w-6 text-center shrink-0">
+                                                {String(i + 1).padStart(2, '0')}
+                                            </span>
+
+                                            {/* SKU */}
+                                            <span className="font-mono text-[10px] tracking-tight w-20 shrink-0 text-gray-800">
+                                                {p.sku || '—'}
+                                            </span>
+
+                                            {/* Produto + marca */}
+                                            <div className="flex-1 min-w-0 leading-tight">
+                                                <p className="text-[11.5px] font-semibold truncate">{p.name}</p>
+                                                {p.brands?.name && (
+                                                    <p className="text-[9px] uppercase tracking-wide text-gray-600 mt-0.5">
+                                                        {p.brands.name}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Estoque */}
+                                            <div className="text-[10px] lsr-num text-gray-800 w-44 shrink-0 leading-tight">
+                                                <p>
+                                                    Atual: <strong>{p.quantity}</strong>
+                                                    <span className="text-gray-500"> · </span>
+                                                    Mín: <strong>{p.min_quantity || 0}</strong>
+                                                </p>
+                                                <p className="mt-0.5">
+                                                    Pedir: <strong className="text-[12px]">{qty}</strong> un
+                                                </p>
+                                            </div>
+
+                                            {/* Último valor de compra */}
+                                            <div className="text-right w-28 shrink-0 leading-tight">
+                                                <p className="text-[8.5px] uppercase tracking-wider text-gray-600">Últ. compra</p>
+                                                <p className="lsr-num text-[11px] font-semibold">{formatBRL(cost)}</p>
+                                            </div>
+
+                                            {/* Subtotal da linha */}
+                                            <div className="text-right w-28 shrink-0 leading-tight border-l border-gray-300 pl-3">
+                                                <p className="text-[8.5px] uppercase tracking-wider text-gray-600">Subtotal</p>
+                                                <p className="lsr-num text-[12px] font-black">{formatBRL(lineTotal)}</p>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+
+                            {/* Supplier subtotal footer */}
+                            <div className="flex items-center justify-between bg-gray-100 border-t-2 border-black px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.15em] font-bold text-gray-800">
+                                    Subtotal {supplier}
+                                </p>
+                                <p className="lsr-num text-[14px] font-black">{formatBRL(subtotal)}</p>
+                            </div>
                         </section>
                     )
                 })}
 
-                {/* GRAND TOTAL — only when there are items */}
+                {/* GRAND TOTAL */}
                 {totalItems > 0 && (
                     <section className="border-[3px] border-black bg-gray-50 mt-5 mb-6 flex items-center justify-between px-4 py-2.5">
                         <div>
@@ -220,14 +225,14 @@ export default function LowStockReport({ products = [] }) {
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] mb-1 text-gray-800">Observações</h4>
                         <ul className="text-[10px] leading-relaxed list-disc pl-4 space-y-0.5 text-gray-800">
                             <li>Quantidade sugerida calculada como <span className="font-mono">2 × qtd mínima − qtd atual</span> (piso de 1× qtd mín).</li>
-                            <li>Valores estimados a partir do preço de custo cadastrado no sistema; confirme com o fornecedor antes de fechar o pedido.</li>
-                            <li>Verifique disponibilidade e prazo de entrega antes da emissão da nota fiscal.</li>
+                            <li><strong>Último valor de compra</strong> = valor pago na última nota fiscal lançada para o item (campo <span className="font-mono">cost_price</span>).</li>
+                            <li>Confirme valores e disponibilidade com o fornecedor antes de fechar o pedido — preços podem ter variado.</li>
                             <li>Itens sem fornecedor cadastrado aparecem ao final agrupados como &quot;Sem fornecedor&quot;.</li>
                         </ul>
                     </section>
                 )}
 
-                {/* SIGNATURES — 3 blocks */}
+                {/* SIGNATURES */}
                 <section className="grid grid-cols-3 gap-6 mt-10 text-[10px]">
                     <div className="border-t border-black pt-1 text-center">
                         <p className="font-bold uppercase tracking-wide">Solicitante</p>
@@ -243,7 +248,6 @@ export default function LowStockReport({ products = [] }) {
                     </div>
                 </section>
 
-                {/* FOOTER */}
                 <footer className="mt-8 pt-2 border-t border-gray-400 flex items-center justify-between text-[9px] text-gray-600">
                     <span>{TG.name} · {TG.cnpj}</span>
                     <span>Documento {docNumber} · Emitido em {issueDate} {issueTime}</span>
