@@ -28,7 +28,7 @@ export async function GET(request) {
     const endOfDay = new Date(y, m - 1, d, 23, 59, 59).toISOString()
 
     const [{ data: transactions }, { data: closure }] = await Promise.all([
-        supabase.from('transactions').select('*').eq('tenant_id', tenantId)
+        supabase.from('transactions').select('*, transaction_payments(payment_method, amount)').eq('tenant_id', tenantId)
             .gte('date', startOfDay).lte('date', endOfDay)
             .order('date', { ascending: false }),
         supabase.from('daily_closures').select('*').eq('tenant_id', tenantId)

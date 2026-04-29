@@ -525,11 +525,18 @@ export default function DailyMovement() {
                                     <p className="text-sm font-bold text-gray-200">{t.description}</p>
                                     <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                         <span>{new Date(t.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                                        {t.payment_method && (
+                                        {t.payment_method === 'Múltiplo' && Array.isArray(t.transaction_payments) && t.transaction_payments.length > 0 ? (
+                                            <span
+                                                title={t.transaction_payments.map(p => `${p.payment_method}: R$ ${Number(p.amount).toFixed(2)}`).join(' + ')}
+                                                className="inline-flex items-center gap-1 bg-purple-500/15 text-purple-300 border border-purple-500/30 rounded-full px-2 py-0.5 text-xs font-bold cursor-help"
+                                            >
+                                                Múltiplo ({t.transaction_payments.length}×)
+                                            </span>
+                                        ) : t.payment_method ? (
                                             <span className="bg-neutral-800 px-2 py-0.5 rounded-full border border-neutral-700 text-gray-400">
                                                 {t.payment_method}
                                             </span>
-                                        )}
+                                        ) : null}
                                     </div>
                                 </div>
                                 <span className={`font-black ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
