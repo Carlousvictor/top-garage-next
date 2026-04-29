@@ -137,8 +137,16 @@ export default function FinancialReports({
         transactions
             .filter((t) => t.type === 'income')
             .forEach((t) => {
-                const m = t.payment_method || 'Não informado'
-                byMethod[m] = (byMethod[m] || 0) + Number(t.amount || 0)
+                if (t.payment_method === 'Múltiplo' && Array.isArray(t.transaction_payments) && t.transaction_payments.length > 0) {
+                    // Disaggregate split: each payment counts in its own form
+                    for (const p of t.transaction_payments) {
+                        const m = p.payment_method || 'Não informado'
+                        byMethod[m] = (byMethod[m] || 0) + Number(p.amount || 0)
+                    }
+                } else {
+                    const m = t.payment_method || 'Não informado'
+                    byMethod[m] = (byMethod[m] || 0) + Number(t.amount || 0)
+                }
             })
 
         return { income, expense, balance: income - expense, ordersRevenue, ordersCount, avgTicket, byMethod }
