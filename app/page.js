@@ -1,6 +1,7 @@
 import { createClient } from '@/utils/supabase/server'
 import DashboardHome from '@/components/DashboardHome'
 import { redirect } from 'next/navigation'
+import { getAuthContext } from '@/lib/auth-cache'
 
 // Garante render dinâmico — sem cache de página entre requests.
 // Sem isso, o Next 16 pode tratar a home como cacheável e congelar as
@@ -28,28 +29,16 @@ function brtTodayBoundaries() {
 }
 
 export default async function Home() {
-    const supabase = await createClient()
+    // Reusa o auth context cacheado — mesma chamada que o layout faz,
+    // mas via React cache() vira no-op no segundo call dentro do request.
+    // Antes: 2 queries Supabase por page load (layout + page); agora: 1.
+    const { user, tenantId } = await getAuthContext()
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-    if (!user || userError) {
+    if (!user) {
         redirect('/login')
     }
 
-    // profiles.user_id é a coluna canônica (moderna). Mantemos fallback por
-    // .eq('id', ...) pra rows antigas inseridas antes do refactor de schema —
-    // mesmo padrão usado em todos os outros pontos de auth do app (api routes,
-    // server actions). Sem o user_id-first o tenantId vinha undefined no home,
-    // zerando todas as metrics — incluindo Receita de Hoje.
-    let tenantId = null
-    const { data: profileByUserId } = await supabase
-        .from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
-    tenantId = profileByUserId?.tenant_id ?? null
-    if (!tenantId) {
-        const { data: profileById } = await supabase
-            .from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
-        tenantId = profileById?.tenant_id ?? null
-    }
+    const supabase = await createClient()
 
     let activeOS = 0
     let lowStock = 0
