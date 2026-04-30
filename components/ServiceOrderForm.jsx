@@ -277,6 +277,19 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
 
     const handleSubmit = async (e) => {
         e.preventDefault()
+
+        // Carlos: confirmar quando salva como Concluido sem agendar próxima revisão.
+        // Mesma regra do handleFinish — vale também aqui pois o usuário pode mudar
+        // o status pra Concluido pelo dropdown e clicar Salvar (caminho alternativo).
+        if (status === 'Concluido' && !nextRevisionDate) {
+            const okSemRevisao = await confirm({
+                title: 'Próxima revisão não agendada',
+                message: 'Deseja salvar a OS como Concluida sem agendar a próxima revisão?\n\nSem essa data, este cliente não aparecerá no CRM (Pós-Venda) automaticamente.',
+                confirmLabel: 'Salvar sem agendar',
+            })
+            if (!okSemRevisao) return
+        }
+
         setLoading(true)
 
         try {
@@ -357,6 +370,18 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                 { method: payment1Method, amount: v1 },
                 { method: payment2Method, amount: v2 },
             ]
+        }
+
+        // Carlos: confirmar quando finaliza sem agendar próxima revisão.
+        // Sem next_revision_date, esta OS NÃO aparece no /crm (filtro estrito) —
+        // queremos que o usuário decida explicitamente se vai pular o agendamento.
+        if (!nextRevisionDate) {
+            const okSemRevisao = await confirm({
+                title: 'Próxima revisão não agendada',
+                message: 'Deseja finalizar a OS sem agendar a próxima revisão?\n\nSem essa data, este cliente não aparecerá no CRM (Pós-Venda) automaticamente.',
+                confirmLabel: 'Finalizar sem agendar',
+            })
+            if (!okSemRevisao) return
         }
 
         const ok = await confirm({
