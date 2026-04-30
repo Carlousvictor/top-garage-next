@@ -13,48 +13,22 @@ export default function CRMList({ recentOrders, error }) {
     const [selectedDateEnd, setSelectedDateEnd] = useState('')
 
     useEffect(() => {
-        // Logic to generate alerts
+        // Mostra APENAS alertas onde o operador marcou explicitamente uma data
+        // de próxima revisão na OS. Sem heurísticas automáticas (óleo/pastilha/
+        // semestral) — antes elas geravam alertas fantasma pra OS que tinham
+        // o campo vazio, confundindo "tem alerta no CRM" com "campo está
+        // preenchido na OS".
         const today = new Date()
         const newAlerts = []
 
         recentOrders?.forEach(order => {
-            if (!order.clients) return // Need a client to alert
+            if (!order.clients) return                  // precisa de cliente pra notificar
+            if (!order.next_revision_date) return       // só conta o que foi explicitamente marcado
 
             const orderDate = new Date(order.created_at)
-            const items = order.service_order_items || []
-
-            let hasOil = false
-            let hasTimingBelt = false
-            let hasBrakePad = false
-
-            items.forEach(item => {
-                const desc = item.description.toLowerCase()
-                if (desc.includes('óleo') || desc.includes('oleo')) hasOil = true
-                if (desc.includes('correia')) hasTimingBelt = true
-                if (desc.includes('pastilha') || desc.includes('freio')) hasBrakePad = true
-            })
-
-            // Default Revision Alert (6 Months)
-            const defaultReviewDate = new Date(orderDate)
-            defaultReviewDate.setMonth(defaultReviewDate.getMonth() + 6)
-
-            // Specifically for Brake Pads (could be 6 to 12 months depending on use, setting to 6 months for checkup)
-            const brakeReviewDate = new Date(orderDate)
-            brakeReviewDate.setMonth(brakeReviewDate.getMonth() + 6) // Revisão de freios geralmente a cada 6 meses ou 10k km
-
-            let targetReviewDate = defaultReviewDate;
-            let targetType = 'Revisão Semestral';
-
-            if (order.next_revision_date) {
-                targetReviewDate = new Date(`${order.next_revision_date}T12:00:00`); // Evita problemas de fuso horário
-                targetType = 'Revisão Agendada Manualmente';
-            } else if (hasOil) {
-                targetReviewDate = defaultReviewDate;
-                targetType = 'Troca de Óleo / Revisão Geral';
-            } else if (hasBrakePad) {
-                targetReviewDate = brakeReviewDate;
-                targetType = 'Revisão Sistema de Freios / Pastilhas';
-            }
+            // Adiciona 12:00 pra evitar drift de fuso quando next_revision_date
+            // vem como YYYY-MM-DD do Postgres.
+            const targetReviewDate = new Date(`${order.next_revision_date}T12:00:00`)
 
             newAlerts.push({
                 client_name: order.clients.name,
@@ -62,7 +36,7 @@ export default function CRMList({ recentOrders, error }) {
                 vehicle: `${order.vehicle_brand} ${order.vehicle_model} (${order.vehicle_plate})`,
                 last_service_date: orderDate,
                 next_service_date: targetReviewDate,
-                type: targetType,
+                type: 'Revisão agendada',
                 days_remaining: Math.ceil((targetReviewDate - today) / (1000 * 60 * 60 * 24))
             })
         })
