@@ -2,6 +2,31 @@ import { createClient } from '@/utils/supabase/server'
 import DashboardHome from '@/components/DashboardHome'
 import { redirect } from 'next/navigation'
 
+// Garante render dinâmico — sem cache de página entre requests.
+// Sem isso, o Next 16 pode tratar a home como cacheável e congelar as
+// metrics num snapshot antigo. Dashboard tem dados sempre frescos.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
+// Extrai a data de "hoje" no fuso de Brasília (BRT, UTC-3) — servidor roda
+// em UTC na Vercel. Sem essa conversão, depois das 21h BRT o `new Date()` já
+// virou pro próximo dia UTC e os filtros `gte/lte date` zerariam a Receita
+// de Hoje silenciosamente.
+function brtTodayBoundaries() {
+    const now = new Date()
+    const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+    }).formatToParts(now)
+    const y = parts.find(p => p.type === 'year').value
+    const m = parts.find(p => p.type === 'month').value
+    const d = parts.find(p => p.type === 'day').value
+    const todayDateStr = `${y}-${m}-${d}`
+    const startOfDay = new Date(`${todayDateStr}T00:00:00.000-03:00`).toISOString()
+    const endOfDay = new Date(`${todayDateStr}T23:59:59.999-03:00`).toISOString()
+    return { todayDateStr, startOfDay, endOfDay }
+}
+
 export default async function Home() {
     const supabase = await createClient()
 
@@ -51,9 +76,7 @@ export default async function Home() {
         lowStock = prods?.filter(p => p.quantity <= (p.min_quantity || 0)).length || 0
 
         const now = new Date()
-        const todayDateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString()
-        const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59).toISOString()
+        const { todayDateStr, startOfDay, endOfDay } = brtTodayBoundaries()
 
         const { data: txs } = await supabase
             .from('transactions')
