@@ -5,14 +5,22 @@ import { useRouter } from 'next/navigation'
 
 const AuthContext = createContext({})
 
-export const AuthProvider = ({ children }) => {
+const EMPTY_AUTH = { user: null, tenantId: null, tenant: null, role: null }
+
+export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
     const supabase = createClient()
     const router = useRouter()
-    const [user, setUser] = useState(null)
-    const [tenantId, setTenantId] = useState(null)
-    const [tenant, setTenant] = useState(null)
-    const [role, setRole] = useState(null)
-    const [loading, setLoading] = useState(true)
+    // Hidrata com dados resolvidos no servidor (app/layout.js → getInitialAuth).
+    // Sem isso, o cliente começava com tudo null e mostrava "Garaje.io" /
+    // skeletons por 1-2s depois de cada deploy ou refresh hard. Com SSR-pré-hidratado,
+    // o HTML inicial já tem o nome certo e o React hidrata sem janela de flash.
+    const [user, setUser] = useState(initialAuth.user)
+    const [tenantId, setTenantId] = useState(initialAuth.tenantId)
+    const [tenant, setTenant] = useState(initialAuth.tenant)
+    const [role, setRole] = useState(initialAuth.role)
+    // loading=false quando já temos user resolvido pelo servidor — sem precisar
+    // esperar a primeira ida ao /api/auth/profile.
+    const [loading, setLoading] = useState(!initialAuth.user)
 
     useEffect(() => {
         // Subscrevemos síncronamente pra poder devolver o cleanup do useEffect de verdade.
@@ -22,7 +30,14 @@ export const AuthProvider = ({ children }) => {
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             if (session?.user) {
                 setUser(session.user)
-                await fetchTenantData()
+                // Se já temos tenant via SSR, não refetch desnecessário.
+                // Refetch só quando event é SIGNED_IN (login novo) ou TOKEN_REFRESHED
+                // pode mudar permissões — refresh só se faltar tenant.
+                if (event === 'SIGNED_IN' || !tenant) {
+                    await fetchTenantData()
+                } else {
+                    setLoading(false)
+                }
             } else {
                 setUser(null)
                 setTenantId(null)
@@ -35,7 +50,13 @@ export const AuthProvider = ({ children }) => {
             }
         })
 
+        // Bootstrap só se NÃO veio user via SSR (caso edge: cliente sem cookie
+        // mas com auth válida no Supabase, raríssimo; também usado em dev/HMR).
         const bootstrap = async () => {
+            if (initialAuth.user) {
+                setLoading(false)
+                return
+            }
             const { data: { session } } = await supabase.auth.getSession()
             if (session?.user) {
                 setUser(session.user)
@@ -49,6 +70,7 @@ export const AuthProvider = ({ children }) => {
         return () => {
             subscription.unsubscribe()
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
     const fetchTenantData = async () => {
@@ -66,7 +88,7 @@ export const AuthProvider = ({ children }) => {
                     .from('tenants')
                     .select('name, logo_url, primary_color, document')
                     .eq('id', profile.tenantId)
-                    .single()
+                    .maybeSingle()
 
                 if (tenantData) setTenant(tenantData)
             }

@@ -9,28 +9,30 @@ export async function GET() {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
-    const { data: profile, error: profileError } = await supabase
+    // Dual-key lookup: user_id é canônico, .id é legacy.
+    // .maybeSingle() não erra com 0 rows — evita 500 silenciosos que zeram
+    // o tenant pro cliente.
+    const { data: profile } = await supabase
         .from('profiles')
         .select('tenant_id, role')
         .eq('user_id', user.id)
-        .single()
+        .maybeSingle()
 
-    if (profileError || !profile) {
-        // Fallback: tenta pela coluna id (padrão Supabase)
-        const { data: profileById } = await supabase
-            .from('profiles')
-            .select('tenant_id, role')
-            .eq('id', user.id)
-            .single()
-
+    if (profile?.tenant_id) {
         return NextResponse.json({
-            tenantId: profileById?.tenant_id ?? null,
-            role: profileById?.role ?? null,
+            tenantId: profile.tenant_id,
+            role: profile.role ?? null,
         })
     }
 
+    const { data: profileById } = await supabase
+        .from('profiles')
+        .select('tenant_id, role')
+        .eq('id', user.id)
+        .maybeSingle()
+
     return NextResponse.json({
-        tenantId: profile.tenant_id ?? null,
-        role: profile.role ?? null,
+        tenantId: profileById?.tenant_id ?? null,
+        role: profileById?.role ?? null,
     })
 }

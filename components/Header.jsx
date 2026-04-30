@@ -15,7 +15,11 @@ export default function Header() {
 
     const isAdminMode = pathname.startsWith('/admin')
     const logoSrc = tenant?.logo_url
-    const name = tenant?.name || 'Garaje.io'
+    // NÃO use 'Garaje.io' como fallback visível pra usuários do Top Garage —
+    // confunde quando aparece após deploy/refresh enquanto o tenant carrega.
+    // Sem nome de tenant: mantém o brand institucional GARAJE.IO (que é a
+    // marca do sistema em si), mas só renderiza quando loading=false.
+    const name = tenant?.name || ''
 
     return (
         <header className="flex-shrink-0 flex items-center justify-between h-20 w-full xl:w-64 shrink-0 mb-4 xl:mb-0">

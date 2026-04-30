@@ -13,10 +13,13 @@ const SHOW_VALUES_KEY = 'topgarage_show_values'
 
 export default function DashboardHome({ metrics }) {
     const router = useRouter()
-    const { tenant } = useAuth()
+    const { tenant, loading: authLoading } = useAuth()
     // Remove sufixos entre parênteses como "(Matriz)" / "(Filial X)" do nome no greeting.
     // O nome real fica intacto no banco; isso é só para a saudação.
-    const rawName = tenant?.name || 'Garaje.io'
+    // Sem fallback "Garaje.io" — o usuário do Top Garage NUNCA deveria ver isso.
+    // Quando authLoading, mostra skeleton até o tenant chegar (SSR já hidrata
+    // na maioria dos casos, então essa janela é praticamente zero).
+    const rawName = tenant?.name || ''
     const tenantName = rawName.replace(/\s*\([^)]*\)\s*$/, '').trim() || rawName
 
     // Modo discreto: esconde valores monetários por padrão (sistema fica aberto no balcão).
@@ -115,9 +118,15 @@ export default function DashboardHome({ metrics }) {
             {/* Header Greeting */}
             <div className="flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-2">
-                    <h1 className="text-4xl font-black text-white tracking-tight">
-                        Bem-vindo, {tenantName}
-                    </h1>
+                    {tenantName ? (
+                        <h1 className="text-4xl font-black text-white tracking-tight">
+                            Bem-vindo, {tenantName}
+                        </h1>
+                    ) : (
+                        // Skeleton enquanto o tenant carrega — evita flash de "Garaje.io"
+                        // quando AuthContext está inicializando após deploy/refresh.
+                        <div className="h-10 w-72 bg-neutral-800 rounded animate-pulse" aria-label="Carregando empresa..." />
+                    )}
                     <p className="text-gray-400 text-lg">
                         Selecione um módulo abaixo para começar a trabalhar.
                     </p>
