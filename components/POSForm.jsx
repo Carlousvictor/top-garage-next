@@ -9,7 +9,7 @@ import CreatableSelect from 'react-select/creatable'
 import Select from 'react-select'
 import QuickProductModal from './QuickProductModal'
 
-export default function POSForm() {
+export default function POSForm({ initialClients = [] }) {
     const supabase = createClient()
     const router = useRouter()
     const { tenantId } = useAuth()
@@ -17,7 +17,10 @@ export default function POSForm() {
     const confirm = useConfirm()
 
     const [products, setProducts] = useState([])
-    const [clients, setClients] = useState([])
+    // Lista de clientes vem via SSR do app/pdv/page.js — elimina a race condition
+    // que dava "às vezes aparece, às vezes não" quando o useEffect disparava
+    // antes da sessão Supabase estar hidratada no cliente.
+    const [clients, setClients] = useState(initialClients)
     const [cart, setCart] = useState([])
     const [selectedProduct, setSelectedProduct] = useState(null)
     const [quickProductOpen, setQuickProductOpen] = useState(false)
@@ -46,12 +49,8 @@ export default function POSForm() {
 
     useEffect(() => {
         const fetchData = async () => {
-            const [{ data: prods }, { data: cli }] = await Promise.all([
-                supabase.from('products').select('*').order('name'),
-                supabase.from('clients').select('id, name').order('name')
-            ])
+            const { data: prods } = await supabase.from('products').select('*').order('name')
             setProducts(prods || [])
-            setClients(cli || [])
         }
         fetchData()
     }, [])
