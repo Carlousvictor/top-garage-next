@@ -49,6 +49,10 @@ export async function POST(request) {
         current_km,
         next_revision_date,
         next_revision_km,
+        // Desconto em % aplicado pelo frontend antes de calcular `total`.
+        // Opcional; só usamos pra anexar tag na descrição da transação. O total
+        // já chega líquido (frontend faz subtotal - desconto) — sem isso, sem alteração.
+        discount_percent,
     } = await request.json()
 
     if (!order_id) {
@@ -101,11 +105,15 @@ export async function POST(request) {
 
     // 3. Insert financial transaction
     const isSplit = Array.isArray(payments) && payments.length >= 2
+    // Anexa o desconto na descrição quando >0 — assim fica rastreável no
+    // financeiro sem precisar de coluna nova (mudança aditiva).
+    const discNum = Number(discount_percent)
+    const discTag = Number.isFinite(discNum) && discNum > 0 ? ` - Desc ${discNum}%` : ''
     const { data: txRow, error: txError } = await supabase
         .from('transactions')
         .insert([{
             tenant_id: tenantId,
-            description: `Receita OS #${order_id} - Placa ${plate}`,
+            description: `Receita OS #${order_id} - Placa ${plate}${discTag}`,
             type: 'income',
             category: 'Service',
             amount: total,

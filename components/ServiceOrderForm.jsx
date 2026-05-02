@@ -73,6 +73,9 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     const [payment1Amount, setPayment1Amount] = useState('')
     const [payment2Method, setPayment2Method] = useState('Cartão de Débito')
     const [payment2Amount, setPayment2Amount] = useState('')
+    // Desconto em % aplicado sobre o subtotal — opcional. 0/vazio = sem desconto.
+    // Inicial vem da OS persistida quando edita; default = '' pra novos cadastros.
+    const [discountPercent, setDiscountPercent] = useState(order?.discount_percent != null ? String(order.discount_percent) : '')
     const [items, setItems] = useState(initialItems)
     // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
     // importar histórico do sistema antigo. Salva em service_orders.created_at
@@ -244,8 +247,27 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
         setItems(newItems)
     }
 
-    const calculateTotal = () => {
+    // Subtotal bruto — sem desconto.
+    const calculateSubtotal = () => {
         return items.reduce((acc, item) => acc + ((item.quantity ?? 1) * (item.unit_price ?? 0)), 0)
+    }
+
+    // Sanitiza o desconto digitado: vazio = 0, clamp 0..100.
+    const getDiscountPercent = () => {
+        const raw = parseFloat(discountPercent)
+        if (!Number.isFinite(raw) || raw <= 0) return 0
+        return Math.min(raw, 100)
+    }
+
+    const calculateDiscountAmount = () => {
+        return calculateSubtotal() * (getDiscountPercent() / 100)
+    }
+
+    // Total líquido (subtotal - desconto). Mantém o nome calculateTotal pra que
+    // todos os usos existentes (handleSubmit, handleFinish, splits) continuem
+    // certos sem precisar de alteração — calculateTotal() agora já é o líquido.
+    const calculateTotal = () => {
+        return calculateSubtotal() - calculateDiscountAmount()
     }
 
     const handleToggleSplit = (checked) => {
@@ -316,6 +338,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
                     next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
                     total,
+                    discount_percent: getDiscountPercent() || null,
                     service_date_iso: serviceDateISO,
                     items: items.map(item => ({
                         product_id: item.product_id || null,
@@ -404,6 +427,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     order_id: order.id,
                     plate,
                     total,
+                    discount_percent: getDiscountPercent() || null,
                     service_date_iso: serviceDateISO,
                     is_retroactive: isRetroactive,
                     payment_method: paymentMethod,
@@ -868,6 +892,31 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                             </button>
                         </div>
 
+                        {/* Desconto em % — opcional. Aplica sobre o subtotal e altera o
+                            total final salvo na OS. Se vazio/0, comportamento idêntico ao original. */}
+                        <div className="flex items-center gap-3 mb-4 bg-neutral-950 border border-neutral-800 rounded-lg px-4 py-3">
+                            <label className="text-sm text-gray-300 whitespace-nowrap">Desconto (%):</label>
+                            <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                placeholder="0"
+                                value={discountPercent}
+                                onChange={(e) => setDiscountPercent(e.target.value)}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg w-28 p-2 text-right"
+                            />
+                            {getDiscountPercent() > 0 ? (
+                                <p className="text-xs text-amber-300">
+                                    Aplica -R$ {calculateDiscountAmount().toFixed(2)} sobre o subtotal de R$ {calculateSubtotal().toFixed(2)}.
+                                </p>
+                            ) : (
+                                <p className="text-xs text-gray-500">
+                                    Opcional. Aplica desconto percentual no total da OS.
+                                </p>
+                            )}
+                        </div>
+
                         {/* Items List Table */}
                         <div className="bg-black rounded-lg border border-neutral-800 overflow-hidden">
                             <table className="w-full text-sm text-left text-gray-400">
@@ -950,6 +999,24 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                     )}
                                 </tbody>
                                 <tfoot className="bg-neutral-900 font-bold text-white">
+                                    {/* Linha do subtotal — só aparece quando há desconto >0 pra não poluir
+                                        OS sem desconto (comportamento idêntico ao original nesse caso). */}
+                                    {getDiscountPercent() > 0 && (
+                                        <>
+                                            <tr>
+                                                <td colSpan="3" className="px-4 py-2 text-right text-sm text-gray-400 font-normal">Subtotal:</td>
+                                                <td colSpan="2" className="px-4 py-2 text-sm text-gray-200 font-normal">R$ {calculateSubtotal().toFixed(2)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td colSpan="3" className="px-4 py-2 text-right text-sm text-amber-300 font-normal">
+                                                    Desconto ({getDiscountPercent()}%):
+                                                </td>
+                                                <td colSpan="2" className="px-4 py-2 text-sm text-amber-300 font-normal">
+                                                    - R$ {calculateDiscountAmount().toFixed(2)}
+                                                </td>
+                                            </tr>
+                                        </>
+                                    )}
                                     <tr>
                                         <td colSpan="3" className="px-4 py-3 text-right">Total Final:</td>
                                         <td colSpan="2" className="px-4 py-3 text-lg text-green-400">R$ {calculateTotal().toFixed(2)}</td>
@@ -1057,6 +1124,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                 vehicle={selectedVehicle}
                 paymentMethod={paymentMethod}
                 tenant={tenant}
+                discountPercent={getDiscountPercent()}
             />
 
             <QuickClientModal

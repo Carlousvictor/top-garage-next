@@ -15,7 +15,7 @@ const TOP_GARAGE_INFO = {
 
 const onlyDigits = (s) => (s || '').replace(/\D/g, '')
 
-export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant }) {
+export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant, discountPercent }) {
     if (!order) return null
 
     // Match por CNPJ (não por nome) — nomes mudam, CNPJ é estável.
@@ -40,7 +40,17 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
     const safeSum = (list) => list.reduce((acc, i) => acc + ((i.quantity ?? 1) * (i.unit_price ?? 0)), 0)
     const totalProducts = safeSum(products)
     const totalServices = safeSum(services)
-    const totalAll = safeSum(items)
+    const subtotalAll = safeSum(items)
+
+    // Desconto opcional — quando >0, mostra a linha de desconto e ajusta o
+    // "Total Geral" pra refletir o líquido (que é o que foi salvo na OS).
+    // Sem discountPercent (legado) → totalAll = subtotal, comportamento idêntico.
+    const discPct = (() => {
+        const n = Number(discountPercent)
+        return Number.isFinite(n) && n > 0 ? Math.min(n, 100) : 0
+    })()
+    const discountValue = subtotalAll * (discPct / 100)
+    const totalAll = subtotalAll - discountValue
 
     const formatKm = (km) => km ? `${Number(km).toLocaleString('pt-BR')} km` : ''
 
@@ -179,6 +189,18 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                             <span className="text-xs uppercase font-bold">Total Peças</span>
                             <span className="text-sm font-medium">R$ {totalProducts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                         </div>
+                        {discPct > 0 && (
+                            <>
+                                <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
+                                    <span className="text-xs uppercase font-bold">Subtotal</span>
+                                    <span className="text-sm font-medium">R$ {subtotalAll.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                                <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
+                                    <span className="text-xs uppercase font-bold">Desconto ({discPct}%)</span>
+                                    <span className="text-sm font-medium">- R$ {discountValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            </>
+                        )}
                         {paymentMethod && (
                             <div className="flex justify-between items-center bg-gray-50 p-1 border-b border-gray-300">
                                 <span className="text-xs uppercase font-bold">Forma de Pagamento</span>
