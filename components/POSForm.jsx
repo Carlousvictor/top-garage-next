@@ -1,5 +1,5 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
@@ -9,14 +9,18 @@ import CreatableSelect from 'react-select/creatable'
 import Select from 'react-select'
 import QuickProductModal from './QuickProductModal'
 
-export default function POSForm({ initialClients = [] }) {
+export default function POSForm({ initialClients = [], initialProducts = [] }) {
     const supabase = createClient()
     const router = useRouter()
     const { tenantId } = useAuth()
     const toast = useToast()
     const confirm = useConfirm()
 
-    const [products, setProducts] = useState([])
+    // Lista de produtos vem via SSR de app/pdv/page.js (mesma técnica usada pra clients).
+    // O useEffect com fetch client-side de antes tinha race condition: às vezes
+    // disparava antes da sessão Supabase estar hidratada client-side e o RLS
+    // (tenant_id = user_tenant_id()) devolvia lista vazia silenciosamente.
+    const [products, setProducts] = useState(initialProducts)
     // Lista de clientes vem via SSR do app/pdv/page.js — elimina a race condition
     // que dava "às vezes aparece, às vezes não" quando o useEffect disparava
     // antes da sessão Supabase estar hidratada no cliente.
@@ -36,6 +40,9 @@ export default function POSForm({ initialClients = [] }) {
     const [payment1Amount, setPayment1Amount] = useState('')
     const [payment2Method, setPayment2Method] = useState('Cartão de Débito')
     const [payment2Amount, setPayment2Amount] = useState('')
+    // Desconto em % aplicado sobre o subtotal — aditivo, opcional. 0 = sem desconto.
+    // Limite 0..100; o total líquido é o que vai gravado em transactions.amount.
+    const [discountPercent, setDiscountPercent] = useState('')
     const [loading, setLoading] = useState(false)
 
     // Resolve o nome do cliente pra gravar na descrição da transação.
@@ -46,14 +53,6 @@ export default function POSForm({ initialClients = [] }) {
         if (typed) return typed
         return 'Consumidor'
     }
-
-    useEffect(() => {
-        const fetchData = async () => {
-            const { data: prods } = await supabase.from('products').select('*').order('name')
-            setProducts(prods || [])
-        }
-        fetchData()
-    }, [])
 
     const addProductToCart = (product) => {
         const existing = cart.find(item => item.product_id === product.id)
@@ -96,8 +95,26 @@ export default function POSForm({ initialClients = [] }) {
         setCart(newCart)
     }
 
-    const calculateTotal = () => {
+    // Subtotal bruto — soma dos itens sem desconto.
+    const calculateSubtotal = () => {
         return cart.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0)
+    }
+
+    // Sanitiza o desconto digitado: vazio = 0, clamp 0..100.
+    const getDiscountPercent = () => {
+        const raw = parseFloat(discountPercent)
+        if (!Number.isFinite(raw) || raw <= 0) return 0
+        return Math.min(raw, 100)
+    }
+
+    const calculateDiscountAmount = () => {
+        return calculateSubtotal() * (getDiscountPercent() / 100)
+    }
+
+    // Total líquido (com desconto aplicado). Mantém o nome calculateTotal pra
+    // que todos os usos existentes continuem corretos sem alteração.
+    const calculateTotal = () => {
+        return calculateSubtotal() - calculateDiscountAmount()
     }
 
     // Quando ativa o split, sugere split 50/50 baseado no total atual.
@@ -206,9 +223,14 @@ export default function POSForm({ initialClients = [] }) {
                 ? null
                 : (isSplit ? 'Múltiplo' : paymentMethod)
 
+            // Anexa o % de desconto na descrição quando >0 — assim o desconto fica
+            // rastreável nos relatórios financeiros sem precisar de coluna nova
+            // em transactions (mudança aditiva, sem migration).
+            const discountPct = getDiscountPercent()
+            const discountTag = discountPct > 0 ? ` - Desc ${discountPct}%` : ''
             const description = isPending
-                ? `Venda Balcão (PDV) - Em Aberto - ${clientLabel}`
-                : `Venda Balcão (PDV) - ${isSplit ? 'Múltiplo' : paymentMethod} - ${clientLabel}`
+                ? `Venda Balcão (PDV) - Em Aberto - ${clientLabel}${discountTag}`
+                : `Venda Balcão (PDV) - ${isSplit ? 'Múltiplo' : paymentMethod} - ${clientLabel}${discountTag}`
 
             // 3. Insert transaction (capture id for split)
             const { data: txRows, error: txError } = await supabase
@@ -248,6 +270,7 @@ export default function POSForm({ initialClients = [] }) {
             setSplitPayment(false)
             setPayment1Amount('')
             setPayment2Amount('')
+            setDiscountPercent('')
             window.location.reload()
         } catch (error) {
             console.error(error)
@@ -521,10 +544,45 @@ export default function POSForm({ initialClients = [] }) {
                             Ignorado se a venda for deixada em aberto.
                         </p>
                     </div>
+
+                    {/* Desconto em % — opcional. Aplica sobre o subtotal e atualiza
+                        automaticamente o total + sugestões de split. Sem efeito quando 0/vazio. */}
+                    <div className="mt-4 mb-4">
+                        <label className="block text-sm text-gray-400 mb-2">Desconto (%):</label>
+                        <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            placeholder="Ex: 5"
+                            value={discountPercent}
+                            onChange={(e) => setDiscountPercent(e.target.value)}
+                            className="bg-neutral-800 border border-neutral-700 text-white rounded block w-full p-2 text-right"
+                        />
+                        {getDiscountPercent() > 0 && (
+                            <p className="text-[11px] text-amber-300 mt-1">
+                                Desconto de {getDiscountPercent()}% = -R$ {calculateDiscountAmount().toFixed(2)}
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 <div>
-                    <div className="flex justify-between items-end border-t border-neutral-800 pt-4 mb-4">
+                    {/* Detalhamento do total: mostra subtotal e desconto só quando há desconto >0,
+                        senão mantém o layout original com só "Total". */}
+                    {getDiscountPercent() > 0 && (
+                        <div className="border-t border-neutral-800 pt-4 mb-2 space-y-1">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Subtotal:</span>
+                                <span className="text-gray-200">R$ {calculateSubtotal().toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                                <span className="text-amber-300">Desconto ({getDiscountPercent()}%):</span>
+                                <span className="text-amber-300">- R$ {calculateDiscountAmount().toFixed(2)}</span>
+                            </div>
+                        </div>
+                    )}
+                    <div className={`flex justify-between items-end ${getDiscountPercent() > 0 ? 'pt-2' : 'border-t border-neutral-800 pt-4'} mb-4`}>
                         <span className="text-gray-400 text-lg">Total:</span>
                         <span className="text-4xl font-black text-green-500">
                             R$ {calculateTotal().toFixed(2)}
