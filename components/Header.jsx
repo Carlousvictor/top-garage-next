@@ -6,6 +6,23 @@ import { useAuth } from '@/context/AuthContext'
 
 import { LogOut, Shield } from 'lucide-react'
 
+// Fallback de marca quando NÃO temos logo do tenant (raro — só em /admin ou
+// edge case com tenant sem logo_url cadastrado). Mesma var que o /login usa.
+const RAW_BRAND_NAME = (process.env.NEXT_PUBLIC_BRAND_NAME || 'TOP GARAGE.RJ').toUpperCase()
+function BrandFallback({ className }) {
+    const dotIdx = RAW_BRAND_NAME.indexOf('.')
+    if (dotIdx === -1) {
+        return <h1 className={className}>{RAW_BRAND_NAME}</h1>
+    }
+    const left = RAW_BRAND_NAME.slice(0, dotIdx)
+    const right = RAW_BRAND_NAME.slice(dotIdx + 1)
+    return (
+        <h1 className={className}>
+            {left}<span className="text-red-500">.</span>{right}
+        </h1>
+    )
+}
+
 export default function Header() {
     const pathname = usePathname()
     const { tenant, loading, signOut, role } = useAuth()
@@ -23,12 +40,13 @@ export default function Header() {
 
     return (
         <header className="flex-shrink-0 flex items-center justify-between h-20 w-full xl:w-64 shrink-0 mb-4 xl:mb-0">
-            {/* Brand slot: prioriza logo do tenant; fallback é tipografia Garaje.io (identidade do sistema) */}
+            {/* Brand slot: prioriza logo do tenant; fallback é tipografia configurável
+                via NEXT_PUBLIC_BRAND_NAME. Antes era "GARAJE.IO" hardcoded — mudou
+                porque clientes white-label (ex: Top Garage RJ) não querem ver a
+                marca do platform na própria interface. */}
             {isAdminMode ? (
-                <div className="flex items-center h-full">
-                    <h1 className="text-2xl font-black text-white uppercase tracking-tight ml-2">
-                        GARAJE<span className="text-red-500">.</span>IO
-                    </h1>
+                <div className="flex items-center h-full ml-2">
+                    <BrandFallback className="text-2xl font-black text-white uppercase tracking-tight" />
                 </div>
             ) : loading ? (
                 <div className="h-20 w-48 flex items-center">
@@ -46,9 +64,7 @@ export default function Header() {
                 </div>
             ) : (
                 <div className="flex items-center h-20 w-48">
-                    <h1 className="text-2xl font-black text-white uppercase tracking-tight">
-                        GARAJE<span className="text-red-500">.</span>IO
-                    </h1>
+                    <BrandFallback className="text-2xl font-black text-white uppercase tracking-tight" />
                 </div>
             )}
 

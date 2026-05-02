@@ -4,6 +4,32 @@ import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { FileText, Wrench, CircleDollarSign, Loader2, ArrowRight } from 'lucide-react'
 
+// Branding do login — não dá pra puxar tenant.logo_url aqui porque o usuário
+// ainda não está autenticado. Usamos NEXT_PUBLIC_BRAND_NAME pra que clientes
+// como Top Garage não vejam "GARAJE.IO" no login. Default = Top Garage RJ
+// (instalação atual). Pra outra instalação, basta setar a env no .env.local.
+// Aceita "TOP.GARAGE" / "GARAJE.IO" — o ponto vira o destaque vermelho.
+const RAW_BRAND_NAME = (process.env.NEXT_PUBLIC_BRAND_NAME || 'TOP GARAGE.RJ').toUpperCase()
+const BRAND_TAGLINE = process.env.NEXT_PUBLIC_BRAND_TAGLINE || 'Gestão completa da sua oficina.'
+const BRAND_FOOTER = process.env.NEXT_PUBLIC_BRAND_FOOTER || `© ${new Date().getFullYear()} ${RAW_BRAND_NAME.replace('.', '·').replace(/\s+·\s+/g, ' · ')} · Sistema de gestão para oficinas`
+
+// Renderiza o nome com o ponto destacado em vermelho — mantém a estética
+// original ("GARAJE.IO" → "GARAJE" + "." + "IO"), mas funciona pra qualquer
+// nome com um ponto. Sem ponto, tudo fica branco normal.
+function BrandLogo({ className }) {
+    const dotIdx = RAW_BRAND_NAME.indexOf('.')
+    if (dotIdx === -1) {
+        return <h1 className={className}>{RAW_BRAND_NAME}</h1>
+    }
+    const left = RAW_BRAND_NAME.slice(0, dotIdx)
+    const right = RAW_BRAND_NAME.slice(dotIdx + 1)
+    return (
+        <h1 className={className}>
+            {left}<span className="text-red-500">.</span>{right}
+        </h1>
+    )
+}
+
 const features = [
     {
         icon: FileText,
@@ -69,13 +95,12 @@ export default function LoginPage() {
                 <div className="absolute bottom-0 -right-40 w-[28rem] h-[28rem] bg-blue-600 rounded-full opacity-10 blur-3xl pointer-events-none"></div>
                 <div className="absolute top-1/2 left-1/3 w-72 h-72 bg-orange-500 rounded-full opacity-10 blur-3xl pointer-events-none"></div>
 
-                {/* Topo: logo */}
+                {/* Topo: logo — nome configurável via NEXT_PUBLIC_BRAND_NAME pra
+                    instalações white-label não exporem o brand do platform. */}
                 <div className="relative z-10 animate-in fade-in slide-in-from-left-4 duration-700">
-                    <h1 className="text-7xl font-black text-white tracking-tight leading-none">
-                        GARAJE<span className="text-red-500">.</span>IO
-                    </h1>
+                    <BrandLogo className="text-7xl font-black text-white tracking-tight leading-none" />
                     <p className="mt-4 text-xl text-gray-400 max-w-md font-light">
-                        Gestão completa da sua oficina.
+                        {BRAND_TAGLINE}
                     </p>
                 </div>
 
@@ -96,7 +121,7 @@ export default function LoginPage() {
 
                 {/* Rodapé: copyright */}
                 <div className="relative z-10 text-xs text-gray-600 uppercase tracking-widest animate-in fade-in duration-700 delay-300">
-                    &copy; 2026 Garaje.io &middot; Feito pra oficinas mecânicas do Brasil
+                    {BRAND_FOOTER}
                 </div>
             </div>
 
@@ -109,10 +134,8 @@ export default function LoginPage() {
                 <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     {/* Logo only on mobile — no desktop o logo fica no lado esquerdo */}
                     <div className="lg:hidden text-center mb-8">
-                        <h1 className="text-5xl font-black text-white tracking-tight">
-                            GARAJE<span className="text-red-500">.</span>IO
-                        </h1>
-                        <p className="mt-2 text-sm text-gray-500">Gestão completa da sua oficina</p>
+                        <BrandLogo className="text-5xl font-black text-white tracking-tight" />
+                        <p className="mt-2 text-sm text-gray-500">{BRAND_TAGLINE}</p>
                     </div>
 
                     <div className="bg-neutral-900/70 backdrop-blur-xl border border-neutral-800 rounded-2xl p-8 shadow-2xl shadow-black/40">
