@@ -21,6 +21,9 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
     const [brand, setBrand] = useState(order?.vehicle_brand || '')
     const [model, setModel] = useState(order?.vehicle_model || '')
     const [observation, setObservation] = useState(order?.observation || '')
+    // KM atual do veículo — mesmo padrão de input da OS normal (texto + máscara
+    // numérica). Persistido em service_orders.current_km e impresso na OS.
+    const [currentKm, setCurrentKm] = useState(order?.current_km?.toString() || '')
     const [items, setItems] = useState(initialItems)
 
     // Data da OS — default = hoje. Permite cadastrar OS retroativa pra
@@ -85,6 +88,7 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                     vehicle_brand: brand,
                     vehicle_model: model,
                     observation,
+                    current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
                     total,
                     service_date_iso: (() => {
                         const [y, m, d] = serviceDate.split('-').map(Number)
@@ -156,6 +160,17 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                                 value={model}
                                 onChange={(e) => setModel(e.target.value)}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">KM atual (Opcional)</label>
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                value={currentKm}
+                                onChange={(e) => setCurrentKm(e.target.value.replace(/\D/g, ''))}
+                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                placeholder="Ex: 45000"
                             />
                         </div>
                         {/* Data da OS — mesmo padrão visual da OS normal (md:col-span-2 + md:w-72).
@@ -335,6 +350,7 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                 items={items}
                 client={{ name: observation || 'Terceiro/Avulso' }}
                 tenant={tenant}
+                currentKm={currentKm}
             />
         </>
     )

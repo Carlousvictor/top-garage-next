@@ -271,7 +271,9 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
             setPayment1Amount('')
             setPayment2Amount('')
             setDiscountPercent('')
-            window.location.reload()
+            // router.refresh() preserva o toast de sucesso (window.location.reload
+            // matava o feedback e dava a impressão de que a venda não tinha salvado).
+            router.refresh()
         } catch (error) {
             console.error(error)
             toast.error('Erro ao finalizar venda: ' + error.message)
@@ -594,7 +596,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                         disabled={loading || cart.length === 0}
                         className="w-full bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white py-4 rounded-xl font-black text-xl shadow-lg shadow-green-900/40 transition-all mb-3"
                     >
-                        {loading ? 'Processando...' : 'FINALIZADA'}
+                        {loading ? 'Processando...' : 'FINALIZAR'}
                     </button>
 
                     <button

@@ -1125,6 +1125,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                 paymentMethod={paymentMethod}
                 tenant={tenant}
                 discountPercent={getDiscountPercent()}
+                currentKm={currentKm}
             />
 
             <QuickClientModal

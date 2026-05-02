@@ -15,8 +15,19 @@ const TOP_GARAGE_INFO = {
 
 const onlyDigits = (s) => (s || '').replace(/\D/g, '')
 
-export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant, discountPercent }) {
+export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant, discountPercent, currentKm }) {
     if (!order) return null
+
+    // KM resolvido: prop currentKm (digitada no form, mesmo sem salvar) tem
+    // prioridade sobre order.current_km (já persistido). Sem a prop, lê do
+    // order — comportamento idêntico ao legado.
+    const resolvedCurrentKm = (() => {
+        if (currentKm !== undefined && currentKm !== null && currentKm !== '') {
+            const n = Number(String(currentKm).replace(/\D/g, ''))
+            if (Number.isFinite(n) && n > 0) return n
+        }
+        return order.current_km || null
+    })()
 
     // Match por CNPJ (não por nome) — nomes mudam, CNPJ é estável.
     // Fallback seguro: tenant indefinido → cabeçalho genérico, nunca vaza
@@ -133,10 +144,10 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                             )}
                             <span className="font-bold">Data OS:</span>
                             <span>{formatDate(order.created_at || new Date())}</span>
-                            {order.current_km && (
+                            {resolvedCurrentKm && (
                                 <>
                                     <span className="font-bold">KM atual:</span>
-                                    <span className="font-bold">{formatKm(order.current_km)}</span>
+                                    <span className="font-bold">{formatKm(resolvedCurrentKm)}</span>
                                 </>
                             )}
                             <span className="font-bold">Status:</span>
