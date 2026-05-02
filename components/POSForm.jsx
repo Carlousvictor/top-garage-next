@@ -194,73 +194,49 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
 
         setLoading(true)
 
-        if (!tenantId) {
-            toast.error('Empresa não identificada.')
-            setLoading(false)
-            return
-        }
+        // Watchdog: aborta a request depois de 30s pra evitar o bug de
+        // "fica processando pra sempre". O caminho client-side anterior travava
+        // quando o auth-token do supabase-js precisava ser refreshado e a Promise
+        // nunca settler — agora qualquer hang vira erro visível em até 30s.
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000)
 
         try {
-            // 1. Deduct Stock (acontece em ambos os casos)
-            for (const item of cart) {
-                const { data: prod } = await supabase
-                    .from('products')
-                    .select('quantity')
-                    .eq('id', item.product_id)
-                    .single()
-
-                if (prod) {
-                    await supabase
-                        .from('products')
-                        .update({ quantity: prod.quantity - item.quantity })
-                        .eq('id', item.product_id)
-                }
-            }
-
-            // 2. Determine payment_method written to the transactions row
             const isSplit = splitPayment && !isPending
-            const txPaymentMethod = isPending
-                ? null
-                : (isSplit ? 'Múltiplo' : paymentMethod)
+            const payments = isSplit
+                ? [
+                    { method: payment1Method, amount: parseFloat(payment1Amount) || 0 },
+                    { method: payment2Method, amount: parseFloat(payment2Amount) || 0 },
+                ]
+                : null
 
-            // Anexa o % de desconto na descrição quando >0 — assim o desconto fica
-            // rastreável nos relatórios financeiros sem precisar de coluna nova
-            // em transactions (mudança aditiva, sem migration).
-            const discountPct = getDiscountPercent()
-            const discountTag = discountPct > 0 ? ` - Desc ${discountPct}%` : ''
-            const description = isPending
-                ? `Venda Balcão (PDV) - Em Aberto - ${clientLabel}${discountTag}`
-                : `Venda Balcão (PDV) - ${isSplit ? 'Múltiplo' : paymentMethod} - ${clientLabel}${discountTag}`
-
-            // 3. Insert transaction (capture id for split)
-            const { data: txRows, error: txError } = await supabase
-                .from('transactions')
-                .insert([{
-                    tenant_id: tenantId,
-                    description,
-                    type: 'income',
-                    category: 'Venda de Peças',
-                    amount: total,
+            // Checkout server-side: estoque + transação + split em /api/pdv/checkout.
+            // Antes era tudo direto no browser (supabase.from(...).insert), o que
+            // dependia do auth state do client-side e travava silenciosamente em
+            // certos cenários de refresh de token.
+            const res = await fetch('/api/pdv/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                signal: controller.signal,
+                body: JSON.stringify({
+                    items: cart.map(item => ({
+                        product_id: item.product_id,
+                        quantity: item.quantity,
+                    })),
+                    clientLabel,
+                    paymentMethod,
                     status,
-                    date: new Date().toISOString(),
-                    payment_method: txPaymentMethod,
-                }])
-                .select('id')
+                    splitPayment: isSplit,
+                    payments,
+                    discountPercent: getDiscountPercent(),
+                    total,
+                }),
+            })
 
-            if (txError) throw txError
-
-            // 4. If split, insert two payment rows linked to the transaction
-            if (isSplit && txRows && txRows[0]) {
-                const transactionId = txRows[0].id
-                const v1 = parseFloat(payment1Amount)
-                const v2 = parseFloat(payment2Amount)
-                const { error: payError } = await supabase
-                    .from('transaction_payments')
-                    .insert([
-                        { transaction_id: transactionId, payment_method: payment1Method, amount: v1 },
-                        { transaction_id: transactionId, payment_method: payment2Method, amount: v2 },
-                    ])
-                if (payError) throw payError
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                throw new Error(json.error || `Erro HTTP ${res.status}`)
             }
 
             toast.success(isPending ? 'Venda registrada em aberto.' : 'Venda finalizada com sucesso!')
@@ -276,8 +252,12 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
             router.refresh()
         } catch (error) {
             console.error(error)
-            toast.error('Erro ao finalizar venda: ' + error.message)
+            const msg = error.name === 'AbortError'
+                ? 'A operação demorou demais (>30s) e foi cancelada. Tente novamente — se persistir, recarregue a página.'
+                : error.message
+            toast.error('Erro ao finalizar venda: ' + msg)
         } finally {
+            clearTimeout(timeoutId)
             setLoading(false)
         }
     }
