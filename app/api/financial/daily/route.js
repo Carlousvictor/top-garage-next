@@ -27,15 +27,60 @@ export async function GET(request) {
     const startOfDay = new Date(y, m - 1, d, 0, 0, 0).toISOString()
     const endOfDay = new Date(y, m - 1, d, 23, 59, 59).toISOString()
 
-    const [{ data: transactions }, { data: closure }] = await Promise.all([
+    // Três queries em paralelo: transações do dia, parciais do dia, e fechamento do dia.
+    const [txRes, closureRes, partialsRes] = await Promise.all([
         supabase.from('transactions').select('*, transaction_payments(payment_method, amount)').eq('tenant_id', tenantId)
             .gte('date', startOfDay).lte('date', endOfDay)
             .order('date', { ascending: false }),
         supabase.from('daily_closures').select('*').eq('tenant_id', tenantId)
-            .eq('closure_date', date).maybeSingle()
+            .eq('closure_date', date).maybeSingle(),
+        supabase.from('transaction_partial_payments').select(`
+            id,
+            amount,
+            payment_method,
+            paid_at,
+            notes,
+            transactions:transaction_id ( id, description, category, type )
+        `).eq('tenant_id', tenantId)
+            .gte('paid_at', startOfDay).lte('paid_at', endOfDay)
+            .order('paid_at', { ascending: false }),
     ])
 
-    return NextResponse.json({ transactions: transactions || [], closure: closure || null })
+    // Identificar quais transactions paid no dia tiveram parciais (em qualquer data).
+    // Sem isso, o dia em que a parent é quitada via última parcela mostraria a parent
+    // (=amount total) E a parcela do dia (=valor da parcela) → double-count.
+    const dayTxIds = (txRes.data || []).map(t => t.id)
+    let txIdsWithPartials = new Set()
+    if (dayTxIds.length > 0) {
+        const { data: partialsForTxs } = await supabase
+            .from('transaction_partial_payments')
+            .select('transaction_id')
+            .eq('tenant_id', tenantId)
+            .in('transaction_id', dayTxIds)
+        txIdsWithPartials = new Set((partialsForTxs || []).map(p => p.transaction_id))
+    }
+
+    const transactionsSemParciais = (txRes.data || []).filter(t => !txIdsWithPartials.has(t.id))
+
+    // Mapeia cada parcial do dia em um "evento financeiro" no mesmo formato dos rows
+    // de transactions, pra que o front possa renderizar todos juntos sem branching.
+    const partialsAsEvents = (partialsRes.data || []).map(p => ({
+        id: `partial-${p.id}`,
+        description: `Pgto parcial: ${p.transactions?.description || ''}`,
+        amount: Number(p.amount),
+        type: p.transactions?.type || 'expense',
+        category: p.transactions?.category || 'Geral',
+        status: 'paid',
+        payment_method: p.payment_method,
+        date: p.paid_at,
+        is_partial: true,
+        parent_transaction_id: p.transactions?.id,
+    }))
+
+    const transactions = [...transactionsSemParciais, ...partialsAsEvents]
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+
+    return NextResponse.json({ transactions, closure: closureRes.data || null })
 }
 
 // POST /api/financial/daily  — adiciona despesa/retirada
