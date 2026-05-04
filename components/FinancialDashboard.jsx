@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
 import { Activity, BarChart3, ArrowRight } from 'lucide-react'
+import PartialPaymentModal from './PartialPaymentModal'
 
 export default function FinancialDashboard({ initialTransactions, initialSummary }) {
     const supabase = createClient()
@@ -28,6 +29,8 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
         due_date: new Date().toISOString().split('T')[0],
         status: 'pending'
     })
+    // null = modal fechado; objeto da tx = aberto pra pagar parcial
+    const [partialModalTx, setPartialModalTx] = useState(null)
 
     useEffect(() => {
         if (isFirstLoad && initialTransactions) {
@@ -185,6 +188,14 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
         } catch (error) {
             toast.error('Erro ao atualizar status: ' + error.message)
         }
+    }
+
+    const handleOpenPartial = (tx) => {
+        setPartialModalTx(tx)
+    }
+
+    const handlePartialSuccess = () => {
+        fetchTransactions()
     }
 
     return (
@@ -426,19 +437,30 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                                                 : new Date(t.due_date).toLocaleDateString()
                                             }
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-white">{t.description}</td>
+                                        <td className="px-6 py-4 font-medium text-white">
+                                            {t.description}
+                                            {Number(t.paid_amount) > 0 && t.status === 'pending' && (
+                                                <div className="text-xs text-emerald-400/80 font-normal mt-1">
+                                                    R$ {Number(t.paid_amount).toFixed(2)} já pago de R$ {Number(t.amount).toFixed(2)}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="px-6 py-4">
                                             <span className="bg-neutral-700 text-gray-300 py-1 px-2 rounded text-xs">
                                                 {t.category || 'Geral'}
                                             </span>
                                         </td>
                                         <td className={`px-6 py-4 text-right font-bold ${t.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                                            {t.type === 'income' ? '+' : '-'} R$ {Number(t.amount).toFixed(2)}
+                                            {(() => {
+                                                const showRemaining = t.type === 'expense' && t.status === 'pending' && Number(t.paid_amount) > 0
+                                                const valor = showRemaining ? Number(t.amount) - Number(t.paid_amount) : Number(t.amount)
+                                                return `${t.type === 'income' ? '+' : '-'} R$ ${valor.toFixed(2)}`
+                                            })()}
                                         </td>
                                         {activeTab !== 'overview' && (
                                             <td className="px-6 py-4 text-right">
                                                 <button
-                                                    onClick={() => handleMarkAsPaid(t.id, t.type)}
+                                                    onClick={() => t.type === 'expense' ? handleOpenPartial(t) : handleMarkAsPaid(t.id, t.type)}
                                                     className="text-green-500 hover:text-green-400 font-bold border border-green-900 bg-green-900/20 px-3 py-1 rounded"
                                                 >
                                                     {t.type === 'expense' ? 'Pagar' : 'Receber'}
@@ -452,6 +474,14 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                     </table>
                 </div>
             </div>
+
+            {partialModalTx && (
+                <PartialPaymentModal
+                    transaction={partialModalTx}
+                    onClose={() => setPartialModalTx(null)}
+                    onSuccess={handlePartialSuccess}
+                />
+            )}
         </div>
     )
 }
