@@ -204,153 +204,42 @@ export default function StockImport() {
         }
 
         try {
-            // 1. Get/Create Supplier
-            let supplierId;
-            const { data: supplier } = await supabase
-                .from('suppliers')
-                .select('id')
-                .eq('cnpj', importData.supplierCNPJ)
-                // Filter by tenant_id if suppliers are possibly shared or private. 
-                // Usually suppliers are global or company specific. Assuming company specific per multi-tenant rule.
-                .eq('tenant_id', tenantId)
-                .maybeSingle(); // Changed to maybeSingle to avoid auto-error if multiple (shouldn't happen) or none
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout for large XML parsing in the backend
 
-            if (supplier) {
-                supplierId = supplier.id;
-            } else {
-                const { data: newSupplier, error: createError } = await supabase
-                    .from('suppliers')
-                    .insert([{
-                        tenant_id: tenantId,
-                        name: importData.supplierName,
-                        cnpj: importData.supplierCNPJ
-                    }])
-                    .select()
-                    .single();
-                if (createError) throw new Error(`Erro criar fornecedor: ${createError.message}`);
-                supplierId = newSupplier.id;
+            const res = await fetch('/api/stock/import', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                signal: controller.signal,
+                body: JSON.stringify({
+                    importData,
+                    previewItems,
+                    installments,
+                    isPaidUpfront,
+                    upfrontPaymentMethod
+                })
+            });
+            clearTimeout(timeoutId);
+
+            const json = await res.json().catch(() => ({}));
+            
+            if (!res.ok) {
+                throw new Error(json.error || `Erro HTTP ${res.status}`);
             }
 
-            // 2. Process Items — match em ordem: EAN → SKU+supplier → criar novo.
-            for (const item of previewItems) {
-                let existingProd = null;
-
-                // (a) Match por EAN se o item tiver
-                if (item.ean) {
-                    const { data } = await supabase
-                        .from('products')
-                        .select('id, quantity, ean')
-                        .eq('tenant_id', tenantId)
-                        .eq('ean', item.ean)
-                        .maybeSingle();
-                    existingProd = data;
-                }
-
-                // (b) Fallback: SKU + fornecedor (comportamento antigo)
-                if (!existingProd) {
-                    const { data } = await supabase
-                        .from('products')
-                        .select('id, quantity, ean')
-                        .eq('sku', item.sku)
-                        .eq('supplier_id', supplierId)
-                        .eq('tenant_id', tenantId)
-                        .maybeSingle();
-                    existingProd = data;
-                }
-
-                if (existingProd) {
-                    const updatePayload = {
-                        quantity: Number(existingProd.quantity || 0) + parseFloat(item.quantity),
-                        cost_price: item.cost_price,
-                        selling_price: item.selling_price,
-                        supplier_id: supplierId // fornecedor mais recente vence
-                    };
-                    // Backfill silencioso: se achamos via SKU e o produto não tinha EAN, grava agora.
-                    if (item.ean && !existingProd.ean) {
-                        updatePayload.ean = item.ean;
-                    }
-                    await supabase.from('products').update(updatePayload).eq('id', existingProd.id);
-                } else {
-                    await supabase.from('products').insert([{
-                        tenant_id: tenantId,
-                        sku: item.sku,
-                        ean: item.ean,
-                        name: item.name,
-                        cost_price: item.cost_price,
-                        selling_price: item.selling_price,
-                        quantity: parseFloat(item.quantity),
-                        supplier_id: supplierId
-                    }]);
-                }
-            }
-
-            // 3. Register Stock Entry linked to XML
-            const { data: entryData, error: entryError } = await supabase.from('stock_entries').insert([{
-                tenant_id: tenantId,
-                supplier_id: supplierId,
-                xml_key: importData.xmlKey,
-                total_value: importData.totalValue
-            }]).select().single();
-
-            if (entryError) throw entryError;
-
-            // 4. Register Accounts Payable — 1 linha por parcela, ou 1 à vista.
-            // Convenção do schema existente: `date` é timestamp de criação no insert
-            // e é sobrescrito pro momento do pagamento quando a transação muda pra status='paid'
-            // (vide FinancialDashboard.handleMarkAsPaid). NOT NULL na coluna força preenchimento aqui.
-            const nowIso = new Date().toISOString();
-            let transactionRows;
-            if (installments.length > 0) {
-                transactionRows = installments.map(p => ({
-                    tenant_id: tenantId,
-                    description: p.description,
-                    type: 'expense',
-                    category: 'Fornecedores',
-                    amount: parseFloat(p.amount),
-                    due_date: p.dueDate,
-                    status: 'pending',
-                    payment_method: p.paymentMethod,
-                    related_stock_entry_id: entryData.id,
-                    date: nowIso
-                }));
-            } else {
-                const desc = `NFe ${importData.invoiceNumber} - ${importData.supplierName} (à vista)`;
-                transactionRows = [isPaidUpfront ? {
-                    tenant_id: tenantId,
-                    description: desc,
-                    type: 'expense',
-                    category: 'Fornecedores',
-                    amount: importData.totalValue,
-                    due_date: null,
-                    status: 'paid',
-                    payment_method: upfrontPaymentMethod,
-                    related_stock_entry_id: entryData.id,
-                    date: nowIso
-                } : {
-                    tenant_id: tenantId,
-                    description: desc,
-                    type: 'expense',
-                    category: 'Fornecedores',
-                    amount: importData.totalValue,
-                    due_date: importData.emissionDate,
-                    status: 'pending',
-                    payment_method: 'Boleto',
-                    related_stock_entry_id: entryData.id,
-                    date: nowIso
-                }];
-            }
-
-            const { error: txError } = await supabase.from('transactions').insert(transactionRows);
-            if (txError) throw txError;
-
-            addLog(`Importação confirmada! ${transactionRows.length} lançamento(s) financeiro(s) criado(s).`, 'success');
+            addLog(`Importação confirmada! ${json.transactionCount} lançamento(s) financeiro(s) criado(s).`, 'success');
             setPreviewItems([]);
             setImportData(null);
             setInstallments([]);
             setIsPaidUpfront(false);
 
         } catch (error) {
-            addLog(`Erro ao salvar no banco: ${error.message}`, 'error');
+            if (error.name === 'AbortError') {
+                addLog('Erro: Tempo limite excedido (timeout de 60s). A conexão pode estar lenta.', 'error');
+            } else {
+                addLog(`Erro ao salvar no banco: ${error.message}`, 'error');
+            }
             console.error(error);
         } finally {
             setLoading(false);
