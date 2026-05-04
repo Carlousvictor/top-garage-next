@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS public.stock_entry_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id UUID NOT NULL REFERENCES public.companies(id) DEFAULT public.user_tenant_id(),
+    tenant_id UUID NOT NULL REFERENCES public.tenants(id) DEFAULT public.user_tenant_id(),
     stock_entry_id BIGINT NOT NULL REFERENCES public.stock_entries(id) ON DELETE CASCADE,
     product_id BIGINT REFERENCES public.products(id) ON DELETE SET NULL,
     sku TEXT,
