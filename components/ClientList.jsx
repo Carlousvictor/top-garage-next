@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
+import { Search, X as XIcon } from 'lucide-react'
 
 const EMPTY_VEHICLE = {
     plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '',
@@ -20,6 +21,7 @@ export default function ClientList({ initialClients }) {
     const [saveError, setSaveError] = useState('')
     const [vehicles, setVehicles] = useState([])
     const [newVehicle, setNewVehicle] = useState(EMPTY_VEHICLE)
+    const [searchText, setSearchText] = useState('')
 
     const fetchVehicles = async (clientId) => {
         const res = await fetch(`/api/vehicles/by-client?client_id=${clientId}`, { credentials: 'include' })
@@ -170,6 +172,19 @@ export default function ClientList({ initialClients }) {
         }
     }
 
+    const normalize = (v) => String(v ?? '').toLowerCase().trim()
+
+    const filteredClients = (() => {
+        const q = normalize(searchText)
+        if (!q) return clients
+        return clients.filter(c =>
+            normalize(c.name).includes(q) ||
+            normalize(c.phone).includes(q) ||
+            normalize(c.email).includes(q) ||
+            normalize(c.document).includes(q)
+        )
+    })()
+
     return (
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
             <div className="flex justify-between items-center mb-6">
@@ -183,8 +198,29 @@ export default function ClientList({ initialClients }) {
             </div>
 
             {!isEditing ? (
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-400">
+                <>
+                    <div className="mb-4 relative">
+                        <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={searchText}
+                            onChange={(e) => setSearchText(e.target.value)}
+                            placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..."
+                            className="w-full bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg pl-9 pr-9 py-2.5 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
+                        />
+                        {searchText && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchText('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
+                                title="Limpar busca"
+                            >
+                                <XIcon className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs text-gray-200 uppercase bg-black">
                             <tr>
                                 <th className="px-6 py-3">Nome</th>
@@ -194,7 +230,7 @@ export default function ClientList({ initialClients }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {clients.map((client) => (
+                            {filteredClients.map((client) => (
                                 <tr key={client.id} className="border-b border-neutral-800 hover:bg-neutral-800">
                                     <td className="px-6 py-4 font-medium text-white">{client.name}</td>
                                     <td className="px-6 py-4">{client.email || '-'}</td>
@@ -208,9 +244,18 @@ export default function ClientList({ initialClients }) {
                             {clients.length === 0 && (
                                 <tr><td colSpan="4" className="px-6 py-4 text-center">Nenhum cliente cadastrado.</td></tr>
                             )}
+                            {clients.length > 0 && filteredClients.length === 0 && (
+                                <tr>
+                                    <td colSpan="4" className="px-6 py-4 text-center text-gray-400">
+                                        Nenhum cliente para essa busca.
+                                        <button type="button" onClick={() => setSearchText('')} className="ml-2 text-red-400 underline">Limpar</button>
+                                    </td>
+                                </tr>
+                            )}
                         </tbody>
                     </table>
-                </div>
+                    </div>
+                </>
             ) : (
                 <form onSubmit={handleSave} className="bg-black p-6 rounded-lg border border-neutral-800">
                     <h3 className="text-lg font-bold text-white mb-4">{currentClient.id ? 'Editar Cliente' : 'Novo Cliente'}</h3>
