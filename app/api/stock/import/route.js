@@ -162,7 +162,11 @@ export async function POST(request) {
             stock_entry_id: entryData.id
         }));
         const { error: itemsError } = await supabase.from('stock_entry_items').insert(finalEntryItems);
-        if (itemsError) throw new Error(`Erro registrar itens da entrada: ${itemsError.message}`);
+        if (itemsError) {
+            // Rollback the stock entry to prevent orphaned records
+            await supabase.from('stock_entries').delete().eq('id', entryData.id);
+            throw new Error(`Erro registrar itens da entrada: ${itemsError.message}`);
+        }
 
         // 5. Register Transactions
         const nowIso = new Date().toISOString();

@@ -58,6 +58,8 @@ export default function StockImport() {
 
     const handleFileUpload = async (event) => {
         const file = event.target.files[0];
+        // Reset the input so the same file can be selected again if needed
+        event.target.value = null;
         if (!file) return;
 
         setLoading(true);
