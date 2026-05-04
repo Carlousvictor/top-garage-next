@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
 import ServiceOrderPrint from './ServiceOrderPrint'
+import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import QuickClientModal from './QuickClientModal'
 import QuickProductModal from './QuickProductModal'
@@ -300,6 +301,11 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     const handleSubmit = async (e) => {
         e.preventDefault()
 
+        if (!clientId) {
+            toast.error('Selecione um cliente.')
+            return
+        }
+
         // Carlos: confirmar quando salva como Concluido sem agendar próxima revisão.
         // Mesma regra do handleFinish — vale também aqui pois o usuário pode mudar
         // o status pra Concluido pelo dropdown e clicar Salvar (caminho alternativo).
@@ -364,6 +370,11 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     }
 
     const handleFinish = async () => {
+        if (!clientId) {
+            toast.error('Selecione um cliente.')
+            return
+        }
+
         const serviceDateISO = (() => {
             const [y, m, d] = serviceDate.split('-').map(Number)
             return new Date(y, m - 1, d, 12, 0, 0).toISOString()
@@ -568,17 +579,19 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                                     </button>
                                 </div>
                             </div>
-                            <select
-                                value={clientId}
-                                onChange={(e) => setClientId(e.target.value)}
-                                required
-                                className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
-                            >
-                                <option value="">Selecione um cliente</option>
-                                {clients.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                ))}
-                            </select>
+                            <Select
+                                instanceId="os-client"
+                                value={(() => {
+                                    const c = clients.find(x => String(x.id) === String(clientId))
+                                    return c ? { value: c.id, label: c.name } : null
+                                })()}
+                                onChange={(opt) => setClientId(opt?.value || '')}
+                                options={clients.map(c => ({ value: c.id, label: c.name }))}
+                                placeholder="Selecione um cliente..."
+                                styles={selectStyles}
+                                isClearable
+                                noOptionsMessage={() => 'Nenhum cliente encontrado'}
+                            />
                         </div>
 
                         {/* Vehicle loading indicator */}
