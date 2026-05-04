@@ -460,6 +460,56 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
         }
     }
 
+    const handleApproveEstimate = async () => {
+        const ok = await confirm({
+            title: 'Aprovar orçamento → Virar OS',
+            message: 'Os mesmos itens, valores, cliente e veículo serão mantidos. A OS passa a aparecer na aba "Aberto".',
+            confirmLabel: 'Aprovar',
+        })
+        if (!ok) return
+        setLoading(true)
+        try {
+            const res = await fetch('/api/service-orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    id: order.id,
+                    client_id: clientId || null,
+                    vehicle_plate: plate,
+                    vehicle_brand: brand,
+                    vehicle_model: model,
+                    status: 'Aberto',
+                    observation,
+                    is_estimate: false,
+                    next_revision_date: nextRevisionDate || null,
+                    current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
+                    next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
+                    total: calculateTotal(),
+                    discount_percent: getDiscountPercent() || null,
+                    items: items.map(item => ({
+                        product_id: item.product_id || null,
+                        service_id: item.service_id || null,
+                        description: item.description,
+                        quantity: item.quantity,
+                        unit_price: item.unit_price,
+                        type: item.type,
+                    })),
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error || 'Erro ao aprovar.')
+            toast.success('Orçamento aprovado! Agora é uma OS Aberta.')
+            setIsEstimate(false)
+            setStatus('Aberto')
+            router.refresh()
+        } catch (err) {
+            toast.error(err.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
 
     const handlePrint = () => {
         window.print()
@@ -475,6 +525,23 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
+                    {order && isEstimate && (
+                        <div className="bg-purple-900/20 border border-purple-700/50 rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                            <div>
+                                <div className="text-purple-300 font-bold">Este registro é um Orçamento</div>
+                                <div className="text-purple-200/70 text-sm">Quando o cliente aprovar, clique no botão ao lado.</div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={handleApproveEstimate}
+                                disabled={loading}
+                                className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-medium disabled:opacity-50 whitespace-nowrap"
+                            >
+                                ✓ Aprovar orçamento → Virar OS
+                            </button>
+                        </div>
+                    )}
+
                     {/* Vehicle & Client Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2">
