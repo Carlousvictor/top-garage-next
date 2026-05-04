@@ -246,18 +246,19 @@ export default function DashboardHome({ metrics }) {
                 </div>
 
                 {/* Right Side: Contas a Pagar Section */}
-                <div className="lg:col-span-1 space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                            <CircleDollarSign className="w-5 h-5 text-red-500" />
-                            Contas a Pagar
-                        </h2>
-                        <Link href="/financial" className="text-xs text-red-400 hover:text-red-300 font-bold uppercase tracking-wider">
-                            Ver tudo
-                        </Link>
-                    </div>
+                <div className="lg:col-span-1 flex flex-col h-full">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl flex flex-col h-full max-h-[300px]">
+                        <div className="flex items-center justify-between p-4 border-b border-neutral-800">
+                            <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                                <CircleDollarSign className="w-4 h-4 text-red-500" />
+                                Contas a Pagar
+                            </h2>
+                            <Link href="/financial" className="text-[10px] text-red-400 hover:text-red-300 font-bold uppercase tracking-wider">
+                                Ver tudo
+                            </Link>
+                        </div>
 
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl h-full max-h-[300px] overflow-y-auto custom-scrollbar">
+                        <div className="overflow-y-auto custom-scrollbar flex-1">
                         {metrics.pendingExpenses && metrics.pendingExpenses.length > 0 ? (
                             <div className="divide-y divide-neutral-800">
                                 {metrics.pendingExpenses.map((exp, idx) => {
