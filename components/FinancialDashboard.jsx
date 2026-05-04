@@ -1,11 +1,11 @@
 "use client"
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
-import { Activity, BarChart3, ArrowRight } from 'lucide-react'
+import { Activity, BarChart3, ArrowRight, Search, X } from 'lucide-react'
 import PartialPaymentModal from './PartialPaymentModal'
 
 export default function FinancialDashboard({ initialTransactions, initialSummary }) {
@@ -31,6 +31,46 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
     })
     // null = modal fechado; objeto da tx = aberto pra pagar parcial
     const [partialModalTx, setPartialModalTx] = useState(null)
+
+    // Filters
+    const [filterText, setFilterText] = useState('')
+    const [filterCategory, setFilterCategory] = useState('')
+    const [filterDateFrom, setFilterDateFrom] = useState('')
+    const [filterDateTo, setFilterDateTo] = useState('')
+    const [filterType, setFilterType] = useState('') // '' | 'income' | 'expense'
+
+    const clearFilters = () => {
+        setFilterText('')
+        setFilterCategory('')
+        setFilterDateFrom('')
+        setFilterDateTo('')
+        setFilterType('')
+    }
+
+    // Reset filters when switching tabs
+    useEffect(() => { clearFilters() }, [activeTab])
+
+    const categories = useMemo(() => {
+        const cats = new Set(transactions.map(t => t.category).filter(Boolean))
+        return Array.from(cats).sort()
+    }, [transactions])
+
+    const filteredTransactions = useMemo(() => {
+        return transactions.filter(t => {
+            if (filterText) {
+                const q = filterText.toLowerCase()
+                if (!t.description?.toLowerCase().includes(q) && !t.category?.toLowerCase().includes(q)) return false
+            }
+            if (filterCategory && t.category !== filterCategory) return false
+            if (filterType && t.type !== filterType) return false
+            const dateField = activeTab === 'overview' ? t.date : t.due_date
+            if (filterDateFrom && dateField && dateField.slice(0, 10) < filterDateFrom) return false
+            if (filterDateTo && dateField && dateField.slice(0, 10) > filterDateTo) return false
+            return true
+        })
+    }, [transactions, filterText, filterCategory, filterType, filterDateFrom, filterDateTo, activeTab])
+
+    const hasActiveFilters = filterText || filterCategory || filterDateFrom || filterDateTo || filterType
 
     useEffect(() => {
         if (isFirstLoad && initialTransactions) {
@@ -391,6 +431,77 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                 </form>
             )}
 
+            {/* Filter Bar */}
+            <div className="bg-neutral-900 rounded-xl border border-neutral-800 p-4 space-y-3">
+                <div className="flex flex-wrap gap-3 items-center">
+                    {/* Text Search */}
+                    <div className="relative flex-1 min-w-[180px]">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <input
+                            type="text"
+                            value={filterText}
+                            onChange={e => setFilterText(e.target.value)}
+                            placeholder="Buscar por descrição ou categoria..."
+                            className="w-full bg-black border border-neutral-700 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-red-500 transition-colors"
+                        />
+                    </div>
+
+                    {/* Category */}
+                    <select
+                        value={filterCategory}
+                        onChange={e => setFilterCategory(e.target.value)}
+                        className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                    >
+                        <option value="">Todas as categorias</option>
+                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+
+                    {/* Type — only on overview & cash_register */}
+                    {(activeTab === 'overview' || activeTab === 'cash_register') && (
+                        <select
+                            value={filterType}
+                            onChange={e => setFilterType(e.target.value)}
+                            className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                        >
+                            <option value="">Entrada e Saída</option>
+                            <option value="income">Somente Entradas</option>
+                            <option value="expense">Somente Saídas</option>
+                        </select>
+                    )}
+
+                    {/* Date From */}
+                    <input
+                        type="date"
+                        value={filterDateFrom}
+                        onChange={e => setFilterDateFrom(e.target.value)}
+                        className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                        title="Data inicial"
+                    />
+                    <span className="text-gray-600 text-sm">até</span>
+                    <input
+                        type="date"
+                        value={filterDateTo}
+                        onChange={e => setFilterDateTo(e.target.value)}
+                        className="bg-black border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                        title="Data final"
+                    />
+
+                    {hasActiveFilters && (
+                        <button
+                            onClick={clearFilters}
+                            className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 bg-red-900/20 border border-red-900/40 px-3 py-2 rounded-lg transition-colors"
+                        >
+                            <X className="w-3 h-3" /> Limpar filtros
+                        </button>
+                    )}
+                </div>
+                {hasActiveFilters && (
+                    <p className="text-xs text-gray-500">
+                        Exibindo <span className="text-white font-semibold">{filteredTransactions.length}</span> de <span className="text-white font-semibold">{transactions.length}</span> registros
+                    </p>
+                )}
+            </div>
+
             {/* List */}
             <div className="bg-neutral-900 rounded-lg border border-neutral-800 shadow-lg overflow-hidden">
                 <div className="p-4 border-b border-neutral-800 flex justify-between items-center">
@@ -424,12 +535,20 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                                 <tr>
                                     <td colSpan="5" className="px-6 py-4 text-center">Carregando...</td>
                                 </tr>
-                            ) : transactions.length === 0 ? (
+                            ) : filteredTransactions.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="px-6 py-4 text-center">Nenhum registro encontrado.</td>
+                                    <td colSpan="5" className="px-6 py-12 text-center">
+                                        <div className="flex flex-col items-center gap-2 text-gray-500">
+                                            <Search className="w-8 h-8 opacity-30" />
+                                            <p>{hasActiveFilters ? 'Nenhum resultado para os filtros aplicados.' : 'Nenhum registro encontrado.'}</p>
+                                            {hasActiveFilters && (
+                                                <button onClick={clearFilters} className="text-red-400 hover:text-red-300 text-sm underline mt-1">Limpar filtros</button>
+                                            )}
+                                        </div>
+                                    </td>
                                 </tr>
                             ) : (
-                                transactions.map((t) => (
+                                filteredTransactions.map((t) => (
                                     <tr key={t.id} className="border-b border-neutral-800 hover:bg-neutral-800">
                                         <td className="px-6 py-4">
                                             {activeTab === 'overview'
