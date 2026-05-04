@@ -20,8 +20,15 @@ export default function ServiceOrderList({ initialOrders }) {
 
     const filteredOrders = (() => {
         let list = orders
-        if (filterStatus !== 'Todos') {
-            list = list.filter(o => o.status === filterStatus)
+        if (filterStatus === 'Orçamento') {
+            // Aba Orçamento: só os marcados como is_estimate.
+            list = list.filter(o => o.is_estimate === true)
+        } else {
+            // Demais abas (incluindo "Todos"): só OS reais (esconde orçamentos).
+            list = list.filter(o => o.is_estimate !== true)
+            if (filterStatus !== 'Todos') {
+                list = list.filter(o => o.status === filterStatus)
+            }
         }
         const q = normalize(searchText)
         if (q) {
@@ -41,6 +48,7 @@ export default function ServiceOrderList({ initialOrders }) {
             case 'Em Andamento': return 'bg-blue-900 text-blue-300 border-blue-700'
             case 'Concluido': return 'bg-green-900 text-green-300 border-green-700'
             case 'Cancelado': return 'bg-red-900 text-red-300 border-red-700'
+            case 'Orçamento': return 'bg-purple-900 text-purple-300 border-purple-700'
             default: return 'bg-neutral-800 text-gray-300 border-neutral-600'
         }
     }
@@ -87,7 +95,7 @@ export default function ServiceOrderList({ initialOrders }) {
             </div>
 
             <div className="mb-6 flex gap-2 overflow-x-auto pb-2 items-center">
-                {['Todos', 'Aberto', 'Em Andamento', 'Concluido', 'Cancelado'].map(status => (
+                {['Todos', 'Aberto', 'Em Andamento', 'Concluido', 'Cancelado', 'Orçamento'].map(status => (
                     <button
                         key={status}
                         onClick={() => setFilterStatus(status)}
@@ -149,9 +157,15 @@ export default function ServiceOrderList({ initialOrders }) {
                                         R$ {order.total ? order.total.toFixed(2) : '0.00'}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <span className={`px-2 py-1 rounded-md text-xs border ${getStatusColor(order.status)}`}>
-                                            {order.status}
-                                        </span>
+                                        {order.is_estimate ? (
+                                            <span className={`px-2 py-1 rounded-md text-xs border ${getStatusColor('Orçamento')}`}>
+                                                Orçamento
+                                            </span>
+                                        ) : (
+                                            <span className={`px-2 py-1 rounded-md text-xs border ${getStatusColor(order.status)}`}>
+                                                {order.status}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-right flex items-center justify-end gap-3">
                                         <Link
