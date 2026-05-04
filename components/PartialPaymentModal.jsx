@@ -77,7 +77,7 @@ export default function PartialPaymentModal({ transaction, onClose, onSuccess })
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg w-full max-w-md shadow-xl">
                 <div className="flex justify-between items-center p-4 border-b border-neutral-800">
                     <h3 className="text-lg font-bold text-white">Pagar conta</h3>
-                    <button onClick={onClose} className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} aria-label="Fechar" className="text-gray-500 hover:text-white"><X className="w-5 h-5" /></button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-4 space-y-4">
@@ -110,6 +110,7 @@ export default function PartialPaymentModal({ transaction, onClose, onSuccess })
                             onChange={(e) => setValor(e.target.value)}
                             className="bg-black border border-neutral-700 text-white text-sm rounded-lg w-full p-2.5"
                             required
+                            autoFocus
                         />
                     </div>
 
