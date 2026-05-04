@@ -11,6 +11,12 @@ import {
     ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 
+// NOTA — Pagamentos parciais (2026-05-03):
+// Esta tela agrega o `amount` total das transactions, não a soma dos
+// parciais (transaction_partial_payments). Pra contas a pagar quitadas
+// via múltiplas parcelas, isso reflete o valor da dívida — não o fluxo
+// de caixa diário. Pra fluxo de caixa real por dia, ver /financial/daily.
+
 const BRL = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 const INT = (n) => Number(n || 0).toLocaleString('pt-BR')
 
