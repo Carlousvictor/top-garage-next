@@ -40,6 +40,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
     const [minQuantity, setMinQuantity] = useState('0')
     const [categoryId, setCategoryId] = useState('')
     const [brandId, setBrandId] = useState('')
+    const [isEphemeral, setIsEphemeral] = useState(false)
 
     const [categories, setCategories] = useState([])
     const [brands, setBrands] = useState([])
@@ -166,6 +167,32 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
             setErrorMsg('Informe um preço de venda válido.')
             return
         }
+
+        if (isEphemeral) {
+            const virtualProduct = {
+                id: null,
+                name: name.trim(),
+                cost_price: parseCurrency(costPrice) || 0,
+                selling_price: sellingNum,
+                profit_margin_percent: parseFloat(margin) || 0,
+                quantity: parseInt(quantity) || 0,
+                sku: sku.trim() || null
+            }
+            onCreated(virtualProduct)
+
+            setName('')
+            setSku('')
+            setCostPrice('')
+            setMargin('')
+            setSellingPrice('')
+            setQuantity('0')
+            setMinQuantity('0')
+            setCategoryId('')
+            setBrandId('')
+            setIsEphemeral(false)
+            return
+        }
+
         setSaving(true)
         try {
             const res = await fetch('/api/products', {
@@ -376,6 +403,19 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                         </div>
                     )}
 
+                    <div className="flex items-center gap-2 pt-2 pb-1">
+                        <input
+                            type="checkbox"
+                            id="isEphemeral"
+                            checked={isEphemeral}
+                            onChange={(e) => setIsEphemeral(e.target.checked)}
+                            className="w-4 h-4 text-red-600 bg-black border-neutral-700 rounded focus:ring-red-500"
+                        />
+                        <label htmlFor="isEphemeral" className="text-sm text-gray-300 cursor-pointer">
+                            Lançar item apenas nesta venda (não cadastrar no estoque)
+                        </label>
+                    </div>
+
                     <div className="flex gap-3 pt-2">
                         <button
                             type="button"
@@ -389,7 +429,7 @@ export default function QuickProductModal({ isOpen, onClose, onCreated, initialN
                             disabled={saving}
                             className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-lg shadow-red-900/20 transition"
                         >
-                            {saving ? 'Salvando...' : 'Cadastrar e adicionar à OS'}
+                            {saving ? 'Salvando...' : (isEphemeral ? 'Adicionar à OS' : 'Cadastrar e adicionar')}
                         </button>
                     </div>
                 </form>

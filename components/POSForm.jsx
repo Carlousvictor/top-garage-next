@@ -78,7 +78,9 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     }
 
     const handleQuickProductCreated = (newProduct) => {
-        setProducts(prev => [...prev, newProduct].sort((a, b) => a.name.localeCompare(b.name)))
+        if (newProduct.id) {
+            setProducts(prev => [...prev, newProduct].sort((a, b) => a.name.localeCompare(b.name)))
+        }
         addProductToCart(newProduct)
         setQuickProductOpen(false)
     }

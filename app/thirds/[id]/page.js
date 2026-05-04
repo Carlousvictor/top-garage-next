@@ -1,5 +1,5 @@
 import { createClient } from '@/utils/supabase/server'
-import ThirdPartyOrderForm from '@/components/ThirdPartyOrderForm'
+import ServiceOrderForm from '@/components/ServiceOrderForm'
 import { notFound } from 'next/navigation'
 
 export default async function EditThirdPartyOrderPage({ params }) {
@@ -16,10 +16,28 @@ export default async function EditThirdPartyOrderPage({ params }) {
         notFound()
     }
 
-    const { data: items } = await supabase
-        .from('service_order_items')
-        .select('*')
-        .eq('service_order_id', id)
+    const [
+        { data: items },
+        { data: clients },
+        { data: products },
+        { data: services }
+    ] = await Promise.all([
+        supabase.from('service_order_items').select('*').eq('service_order_id', id),
+        supabase.from('clients').select('*').order('name'),
+        supabase.from('products').select('*').order('name'),
+        supabase.from('services').select('*').order('name'),
+    ])
 
-    return <ThirdPartyOrderForm order={order} initialItems={items || []} />
+    return (
+        <ServiceOrderForm
+            order={order}
+            initialItems={items || []}
+            initialClients={clients || []}
+            initialProducts={products || []}
+            initialServices={services || []}
+            isThirdParty={true}
+            onCancelPath="/thirds"
+            onSavePath="/thirds"
+        />
+    )
 }

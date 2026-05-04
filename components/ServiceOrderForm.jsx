@@ -44,18 +44,26 @@ const selectStyles = {
     dropdownIndicator: (base) => ({ ...base, color: '#9ca3af' })
 }
 
-export default function ServiceOrderForm({ order, initialClients = [], initialProducts = [], initialServices = [], initialItems = [] }) {
+export default function ServiceOrderForm({ 
+    order, 
+    initialClients = [], 
+    initialProducts = [], 
+    initialServices = [], 
+    initialItems = [],
+    isThirdParty = false,
+    onCancelPath = '/os',
+    onSavePath = '/os'
+}) {
     const supabase = createClient()
     const router = useRouter()
     const { companyId, tenant } = useAuth()
     const toast = useToast()
     const confirm = useConfirm()
 
-    // Fallback if onCancel not passed -> use router.back() or push to /os
-    const onCancel = () => router.push('/os')
+    const onCancel = () => router.push(onCancelPath)
     const onSave = () => {
         router.refresh()
-        router.push('/os')
+        router.push(onSavePath)
     }
     const [loading, setLoading] = useState(false)
     const [clientId, setClientId] = useState(order?.client_id || '')
@@ -213,7 +221,9 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
     // Pós-cadastro do modal: anexa o produto ao catálogo local e já adiciona como item da OS.
     // Usa a mesma forma que handleAddItem('product') — mantém comportamento consistente.
     const handleProductCreated = (product) => {
-        setProducts(prev => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)))
+        if (product.id) {
+            setProducts(prev => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)))
+        }
         setItems(prev => [...prev, {
             type: 'product',
             product_id: product.id,
@@ -340,6 +350,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     status,
                     observation,
                     is_estimate: isEstimate,
+                    is_third_party: isThirdParty,
                     next_revision_date: nextRevisionDate || null,
                     current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
                     next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
@@ -493,6 +504,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
                     status: 'Aberto',
                     observation,
                     is_estimate: false,
+                    is_third_party: isThirdParty,
                     next_revision_date: nextRevisionDate || null,
                     current_km: currentKm ? parseInt(currentKm.replace(/\D/g, ''), 10) : null,
                     next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
@@ -532,7 +544,7 @@ export default function ServiceOrderForm({ order, initialClients = [], initialPr
             <div className="bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 print:hidden">
 
                 <h2 className="text-xl font-bold text-white mb-6">
-                    {order ? `Editar OS #${order.id}` : 'Nova Ordem de Serviço'}
+                    {order ? `Editar ${isThirdParty ? 'OS de Terceiros' : 'OS'} #${order.id}` : (isThirdParty ? 'Nova OS de Terceiros' : 'Nova Ordem de Serviço')}
                 </h2>
 
                 <form onSubmit={handleSubmit} className="space-y-6">

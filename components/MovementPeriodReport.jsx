@@ -40,30 +40,22 @@ export default function MovementPeriodReport({ onSelectDay }) {
         if (!companyId || !startDate || !endDate) return
         setLoading(true)
 
-        const [sy, sm, sd] = startDate.split('-').map(Number)
-        const [ey, em, ed] = endDate.split('-').map(Number)
-        const startISO = new Date(sy, sm - 1, sd, 0, 0, 0).toISOString()
-        const endISO = new Date(ey, em - 1, ed, 23, 59, 59).toISOString()
-
-        const [{ data: txs }, { data: cls }] = await Promise.all([
-            supabase
-                .from('transactions')
-                .select('amount, type, status, payment_method, date')
-                .eq('tenant_id', companyId)
-                .eq('status', 'paid')
-                .gte('date', startISO)
-                .lte('date', endISO),
-            supabase
-                .from('daily_closures')
-                .select('closure_date, status')
-                .eq('tenant_id', companyId)
-                .gte('closure_date', startDate)
-                .lte('closure_date', endDate)
-        ])
-
-        setTransactions(txs || [])
-        setClosures(cls || [])
-        setLoading(false)
+        try {
+            const res = await fetch(`/api/financial/period?start=${startDate}&end=${endDate}`, { credentials: 'include' })
+            const json = await res.json()
+            if (res.ok) {
+                setTransactions(json.transactions || [])
+                setClosures(json.closures || [])
+            } else {
+                console.error('Erro ao buscar período:', json.error)
+                setTransactions([])
+                setClosures([])
+            }
+        } catch (err) {
+            console.error('Erro de rede ao buscar período:', err)
+        } finally {
+            setLoading(false)
+        }
     }
 
     useEffect(() => {
