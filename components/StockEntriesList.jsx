@@ -1,0 +1,235 @@
+"use client"
+import { useState, useEffect } from 'react'
+import { createClient } from '../utils/supabase/client'
+import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
+import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck } from 'lucide-react'
+
+export default function StockEntriesList() {
+    const supabase = createClient()
+    const { tenantId } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
+
+    const [entries, setEntries] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [expandedEntry, setExpandedEntry] = useState(null)
+    const [entryItems, setEntryItems] = useState({}) // { entryId: [items] }
+
+    const fetchEntries = async () => {
+        setLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from('stock_entries')
+                .select(`
+                    *,
+                    suppliers(name)
+                `)
+                .eq('tenant_id', tenantId)
+                .order('created_at', { ascending: false })
+            
+            if (error) throw error
+            setEntries(data || [])
+        } catch (error) {
+            toast.error('Erro ao carregar entradas: ' + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    useEffect(() => {
+        if (tenantId) fetchEntries()
+    }, [tenantId])
+
+    const toggleExpand = async (entryId) => {
+        if (expandedEntry === entryId) {
+            setExpandedEntry(null)
+            return
+        }
+
+        setExpandedEntry(entryId)
+        if (!entryItems[entryId]) {
+            try {
+                const { data, error } = await supabase
+                    .from('stock_entry_items')
+                    .select('*')
+                    .eq('stock_entry_id', entryId)
+                
+                if (error) throw error
+                setEntryItems(prev => ({ ...prev, [entryId]: data }))
+            } catch (error) {
+                toast.error('Erro ao carregar itens da nota: ' + error.message)
+            }
+        }
+    }
+
+    const handleDelete = async (entry) => {
+        const isManual = !entry.xml_key
+        const ok = await confirm({
+            title: 'Excluir Entrada de Estoque',
+            message: `Tem certeza que deseja excluir esta entrada do fornecedor "${entry.suppliers?.name}"?\n\nIsso irá:\n1. Reverter as quantidades no estoque.\n2. Excluir os lançamentos financeiros vinculados.\n3. Remover o registro desta nota.\n\nEsta ação NÃO PODE ser desfeita.`,
+            confirmLabel: 'Excluir e Reverter',
+            cancelLabel: 'Cancelar',
+            danger: true
+        })
+
+        if (!ok) return
+
+        try {
+            setLoading(true)
+            
+            // 1. Get items to revert stock
+            const { data: items, error: itemsErr } = await supabase
+                .from('stock_entry_items')
+                .select('*')
+                .eq('stock_entry_id', entry.id)
+            
+            if (itemsErr) throw itemsErr
+
+            // 2. Revert stock quantity for each product
+            if (items && items.length > 0) {
+                for (const item of items) {
+                    if (item.product_id) {
+                        // Get current quantity
+                        const { data: prod } = await supabase
+                            .from('products')
+                            .select('quantity')
+                            .eq('id', item.product_id)
+                            .single()
+                        
+                        if (prod) {
+                            const newQty = Number(prod.quantity || 0) - Number(item.quantity)
+                            await supabase
+                                .from('products')
+                                .update({ quantity: newQty })
+                                .eq('id', item.product_id)
+                        }
+                    }
+                }
+            } else if (!isManual) {
+                // If it's an old entry without items records, we can't revert stock automatically
+                toast.warning('Esta é uma entrada antiga sem registro de itens. O estoque não foi revertido automaticamente, mas o financeiro será excluído.')
+            }
+
+            // 3. Delete related transactions
+            const { error: txErr } = await supabase
+                .from('transactions')
+                .delete()
+                .eq('related_stock_entry_id', entry.id)
+            
+            if (txErr) throw txErr
+
+            // 4. Delete the stock entry (cascades to stock_entry_items)
+            const { error: entryErr } = await supabase
+                .from('stock_entries')
+                .delete()
+                .eq('id', entry.id)
+            
+            if (entryErr) throw entryErr
+
+            toast.success('Entrada excluída e estoque revertido.')
+            setEntries(prev => prev.filter(e => e.id !== entry.id))
+        } catch (error) {
+            toast.error('Erro ao excluir entrada: ' + error.message)
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    if (loading && entries.length === 0) {
+        return <div className="text-center py-10 text-gray-500">Carregando histórico de notas...</div>
+    }
+
+    return (
+        <div className="space-y-4">
+            {entries.length === 0 ? (
+                <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-10 text-center text-gray-500">
+                    <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-20" />
+                    <p>Nenhuma nota fiscal encontrada no histórico.</p>
+                </div>
+            ) : (
+                entries.map(entry => (
+                    <div key={entry.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden transition-all duration-300">
+                        <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <div className={`p-2 rounded-xl ${entry.xml_key ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`} title={entry.xml_key ? 'Importado via XML' : 'Lançamento Manual'}>
+                                    <FileText className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h4 className="text-white font-bold">{entry.suppliers?.name || 'Fornecedor Desconhecido'}</h4>
+                                    <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" /> {new Date(entry.created_at).toLocaleDateString()}
+                                        </span>
+                                        <span className="text-xs text-gray-400 flex items-center gap-1">
+                                            <Hash className="w-3 h-3" /> {entry.xml_key ? 'XML' : 'Manual'}
+                                        </span>
+                                        <span className="text-xs text-green-400 font-bold">
+                                            R$ {Number(entry.total_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => toggleExpand(entry.id)}
+                                    className="p-2 text-gray-400 hover:text-white transition"
+                                    title="Ver itens da nota"
+                                >
+                                    {expandedEntry === entry.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                                </button>
+                                <button 
+                                    onClick={() => handleDelete(entry)}
+                                    className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition"
+                                    title="Excluir nota e reverter estoque"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {expandedEntry === entry.id && (
+                            <div className="border-t border-neutral-800 bg-black/40 p-4 animate-in slide-in-from-top-2 duration-300">
+                                <h5 className="text-xs uppercase font-bold text-gray-500 mb-3 tracking-widest flex items-center gap-2">
+                                    <Truck className="w-3 h-3" /> Itens desta Nota
+                                </h5>
+                                {!entryItems[entry.id] ? (
+                                    <p className="text-sm text-gray-500 italic">Carregando itens...</p>
+                                ) : entryItems[entry.id].length === 0 ? (
+                                    <p className="text-sm text-gray-500 italic">Nenhum item registrado para esta nota (entrada antiga).</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs text-left">
+                                            <thead className="text-gray-400 border-b border-neutral-800">
+                                                <tr>
+                                                    <th className="px-2 py-2">Produto</th>
+                                                    <th className="px-2 py-2">SKU/EAN</th>
+                                                    <th className="px-2 py-2 text-right">Qtd</th>
+                                                    <th className="px-2 py-2 text-right">Custo</th>
+                                                    <th className="px-2 py-2 text-right">Venda</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {entryItems[entry.id].map(item => (
+                                                    <tr key={item.id} className="border-b border-neutral-800/50 text-gray-300">
+                                                        <td className="px-2 py-2 font-medium text-white">{item.name}</td>
+                                                        <td className="px-2 py-2 font-mono text-[10px]">{item.sku || item.ean || '-'}</td>
+                                                        <td className="px-2 py-2 text-right">{item.quantity}</td>
+                                                        <td className="px-2 py-2 text-right">R$ {Number(item.cost_price).toFixed(2)}</td>
+                                                        <td className="px-2 py-2 text-right text-green-400">R$ {Number(item.selling_price).toFixed(2)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                ))
+            )}
+        </div>
+    )
+}

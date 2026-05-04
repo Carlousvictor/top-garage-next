@@ -76,6 +76,8 @@ export async function POST(request) {
         }
 
         // 2. Process Items
+        const stockEntryItemsRows = [];
+
         for (const item of previewItems) {
             let existingProd = null;
 
@@ -100,11 +102,14 @@ export async function POST(request) {
                 existingProd = data;
             }
 
+            let finalProductId;
+
             if (existingProd) {
                 const updatePayload = {
                     quantity: Number(existingProd.quantity || 0) + parseFloat(item.quantity),
                     cost_price: item.cost_price,
                     selling_price: item.selling_price,
+                    profit_margin_percent: parseFloat(item.margin) || 0,
                     supplier_id: supplierId
                 };
                 if (item.ean && !existingProd.ean) {
@@ -112,19 +117,33 @@ export async function POST(request) {
                 }
                 const { error: updErr } = await supabase.from('products').update(updatePayload).eq('id', existingProd.id);
                 if (updErr) throw new Error(`Erro atualizar produto: ${updErr.message}`);
+                finalProductId = existingProd.id;
             } else {
-                const { error: insErr } = await supabase.from('products').insert([{
+                const { data: newProd, error: insErr } = await supabase.from('products').insert([{
                     tenant_id: tenantId,
                     sku: item.sku,
                     ean: item.ean,
                     name: item.name,
                     cost_price: item.cost_price,
                     selling_price: item.selling_price,
+                    profit_margin_percent: parseFloat(item.margin) || 0,
                     quantity: parseFloat(item.quantity),
                     supplier_id: supplierId
-                }]);
+                }]).select('id').single();
                 if (insErr) throw new Error(`Erro inserir produto: ${insErr.message}`);
+                finalProductId = newProd.id;
             }
+
+            stockEntryItemsRows.push({
+                tenant_id: tenantId,
+                product_id: finalProductId,
+                sku: item.sku,
+                ean: item.ean,
+                name: item.name,
+                quantity: parseFloat(item.quantity),
+                cost_price: item.cost_price,
+                selling_price: item.selling_price
+            });
         }
 
         // 3. Register Stock Entry
@@ -137,7 +156,15 @@ export async function POST(request) {
 
         if (entryError) throw new Error(`Erro registrar entrada: ${entryError.message}`);
 
-        // 4. Register Transactions
+        // 4. Register Stock Entry Items
+        const finalEntryItems = stockEntryItemsRows.map(row => ({
+            ...row,
+            stock_entry_id: entryData.id
+        }));
+        const { error: itemsError } = await supabase.from('stock_entry_items').insert(finalEntryItems);
+        if (itemsError) throw new Error(`Erro registrar itens da entrada: ${itemsError.message}`);
+
+        // 5. Register Transactions
         const nowIso = new Date().toISOString();
         let transactionRows;
         if (installments.length > 0) {

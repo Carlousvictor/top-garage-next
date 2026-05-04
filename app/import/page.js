@@ -2,10 +2,11 @@
 import { useState } from 'react'
 import StockImport from '@/components/StockImport'
 import ManualStockEntry from '@/components/ManualStockEntry'
-import { FileText, FileCode2 } from 'lucide-react'
+import StockEntriesList from '@/components/StockEntriesList'
+import { FileText, FileCode2, History } from 'lucide-react'
 
 export default function ImportPage() {
-    const [mode, setMode] = useState('xml') // 'xml' | 'manual'
+    const [mode, setMode] = useState('xml') // 'xml' | 'manual' | 'list'
 
     return (
         <div className="space-y-6">
@@ -16,30 +17,50 @@ export default function ImportPage() {
                 </p>
             </div>
 
-            <div className="flex gap-1 bg-neutral-900 border border-neutral-800 rounded-xl p-1 w-fit">
-                <button
-                    type="button"
-                    onClick={() => setMode('xml')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'xml'
-                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
-                        : 'text-gray-400 hover:text-white'
-                        }`}
-                >
-                    <FileCode2 className="w-4 h-4" /> Via XML
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setMode('manual')}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'manual'
-                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
-                        : 'text-gray-400 hover:text-white'
-                        }`}
-                >
-                    <FileText className="w-4 h-4" /> Manual
-                </button>
+            <div className="flex flex-wrap gap-2 items-center justify-between">
+                <div className="flex gap-1 bg-neutral-900 border border-neutral-800 rounded-xl p-1 w-fit">
+                    <button
+                        type="button"
+                        onClick={() => setMode('xml')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'xml'
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                            : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <FileCode2 className="w-4 h-4" /> Via XML
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('manual')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'manual'
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                            : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <FileText className="w-4 h-4" /> Manual
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setMode('list')}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${mode === 'list'
+                            ? 'bg-red-600 text-white shadow-lg shadow-red-900/20'
+                            : 'text-gray-400 hover:text-white'
+                            }`}
+                    >
+                        <History className="w-4 h-4" /> Histórico / Excluir
+                    </button>
+                </div>
+
+                {mode === 'list' && (
+                    <p className="text-xs text-gray-500 italic hidden sm:block">
+                        * Excluir uma nota reverte as quantidades no estoque e remove os lançamentos financeiros.
+                    </p>
+                )}
             </div>
 
-            {mode === 'xml' ? <StockImport /> : <ManualStockEntry />}
+            {mode === 'xml' && <StockImport />}
+            {mode === 'manual' && <ManualStockEntry />}
+            {mode === 'list' && <StockEntriesList />}
         </div>
     )
 }

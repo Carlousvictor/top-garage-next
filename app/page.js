@@ -40,13 +40,16 @@ export default async function Home() {
 
     const supabase = await createClient()
 
-    let activeOS = 0
-    let lowStock = 0
-    let todayIncome = 0
-    let todayNet = 0
-    let todayClosed = false
-    let pendingClosuresCount = 0
-    let upcomingRevisions = 0
+    const metrics = {
+        activeOS: 0,
+        lowStock: 0,
+        todayIncome: 0,
+        todayNet: 0,
+        todayClosed: false,
+        pendingClosuresCount: 0,
+        upcomingRevisions: 0,
+        pendingExpenses: []
+    }
 
     if (tenantId) {
         const { count: activeCount } = await supabase
@@ -55,16 +58,15 @@ export default async function Home() {
             .eq('tenant_id', tenantId)
             .in('status', ['Aberto', 'Em Andamento'])
 
-        activeOS = activeCount || 0
+        metrics.activeOS = activeCount || 0
 
         const { data: prods } = await supabase
             .from('products')
             .select('quantity, min_quantity')
             .eq('tenant_id', tenantId)
 
-        lowStock = prods?.filter(p => p.quantity <= (p.min_quantity || 0)).length || 0
+        metrics.lowStock = prods?.filter(p => p.quantity <= (p.min_quantity || 0)).length || 0
 
-        const now = new Date()
         const { todayDateStr, startOfDay, endOfDay } = brtTodayBoundaries()
 
         const { data: txs } = await supabase
@@ -76,7 +78,7 @@ export default async function Home() {
             .lte('date', endOfDay)
 
         if (txs) {
-            todayIncome = txs
+            metrics.todayIncome = txs
                 .filter(t => t.type === 'income')
                 .reduce((acc, t) => acc + Number(t.amount), 0)
 
@@ -84,7 +86,7 @@ export default async function Home() {
                 .filter(t => t.type === 'expense')
                 .reduce((acc, t) => acc + Number(t.amount), 0)
 
-            todayNet = todayIncome - todayExpense
+            metrics.todayNet = metrics.todayIncome - todayExpense
         }
 
         const { data: todayClosure } = await supabase
@@ -94,10 +96,9 @@ export default async function Home() {
             .eq('closure_date', todayDateStr)
             .maybeSingle()
 
-        todayClosed = todayClosure?.status === 'closed'
+        metrics.todayClosed = todayClosure?.status === 'closed'
 
-        // Pending days = days with movement in the past that aren't closed yet.
-        // Look back up to 60 days to keep it bounded.
+        const now = new Date()
         const lookbackDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 60).toISOString()
 
         const { data: pastTxs } = await supabase
@@ -122,11 +123,8 @@ export default async function Home() {
             })
         )
 
-        pendingClosuresCount = Array.from(movementDays).filter(d => !closedSet.has(d)).length
+        metrics.pendingClosuresCount = Array.from(movementDays).filter(d => !closedSet.has(d)).length
 
-        // Próximas revisões agendadas vencendo nos próximos 7 dias (incluindo hoje).
-        // Dedup por client_id — interessa "quantas pessoas pra contatar", não quantas
-        // OS. Clientes nulos (OS de terceiros) são descartados.
         const weekAhead = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7)
         const weekAheadStr = `${weekAhead.getFullYear()}-${String(weekAhead.getMonth() + 1).padStart(2, '0')}-${String(weekAhead.getDate()).padStart(2, '0')}`
 
@@ -138,19 +136,23 @@ export default async function Home() {
             .gte('next_revision_date', todayDateStr)
             .lte('next_revision_date', weekAheadStr)
 
-        upcomingRevisions = new Set(
+        metrics.upcomingRevisions = new Set(
             (upcomingRevs || []).map(r => r.client_id).filter(Boolean)
         ).size
-    }
 
-    const metrics = {
-        activeOS,
-        lowStock,
-        todayIncome,
-        todayNet,
-        todayClosed,
-        pendingClosuresCount,
-        upcomingRevisions
+        // ---------------------------------------------------------
+        // CONTAS A PAGAR (Próximos Vencimentos)
+        // ---------------------------------------------------------
+        const { data: pendingExpenses } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('type', 'expense')
+            .eq('status', 'pending')
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .limit(10)
+
+        metrics.pendingExpenses = pendingExpenses || []
     }
 
     return (

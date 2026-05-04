@@ -116,6 +116,7 @@ export default function StockImport() {
                     ean: normalizeEan(prod.cEAN),
                     name: prod.xProd,
                     cost_price: costPrice,
+                    margin: margin, // Use global default as initial per-item margin
                     selling_price: parseFloat(sellingPrice.toFixed(2)),
                     quantity: parseFloat(prod.qCom),
                     unit: prod.uCom,
@@ -183,7 +184,16 @@ export default function StockImport() {
 
     const handleItemChange = (index, field, value) => {
         const newItems = [...previewItems];
-        newItems[index][field] = value;
+        const item = { ...newItems[index], [field]: value };
+
+        // Recalcula selling_price quando custo ou margem muda
+        if (field === 'cost_price' || field === 'margin') {
+            const cost = parseFloat(field === 'cost_price' ? value : item.cost_price) || 0;
+            const m = parseFloat(field === 'margin' ? value : item.margin) || 0;
+            item.selling_price = parseFloat((cost * (1 + m / 100)).toFixed(2));
+        }
+
+        newItems[index] = item;
         setPreviewItems(newItems);
     };
 
@@ -327,6 +337,7 @@ export default function StockImport() {
                                     <th className="px-4 py-3 w-1/3">Produto</th>
                                     <th className="px-4 py-3">Qtd</th>
                                     <th className="px-4 py-3">Custo (R$)</th>
+                                    <th className="px-4 py-3">Margem (%)</th>
                                     <th className="px-4 py-3">Venda (R$)</th>
                                 </tr>
                             </thead>
@@ -372,6 +383,14 @@ export default function StockImport() {
                                                 value={item.cost_price}
                                                 onChange={(e) => handleItemChange(index, 'cost_price', e.target.value)}
                                                 className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-gray-300"
+                                            />
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <input
+                                                type="number"
+                                                value={item.margin}
+                                                onChange={(e) => handleItemChange(index, 'margin', e.target.value)}
+                                                className="bg-neutral-700 rounded px-2 py-1 w-20 text-right text-white"
                                             />
                                         </td>
                                         <td className="px-4 py-2">

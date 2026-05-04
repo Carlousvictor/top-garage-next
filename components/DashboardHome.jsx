@@ -245,26 +245,78 @@ export default function DashboardHome({ metrics }) {
             </div>
 
             {/* Modules Grid */}
-            <div>
-                <h2 className="text-2xl font-bold text-white mb-6">Módulos do Sistema</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    {modules.map((mod, idx) => (
-                        <Link
-                            href={mod.path}
-                            key={idx}
-                            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300"
-                        >
-                            <div className={`absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br ${mod.color} rounded-full opacity-20 group-hover:scale-150 transition-transform duration-500 blur-2xl`}></div>
-
-                            <div className="relative z-10 flex flex-col h-full">
-                                <mod.icon className={`w-10 h-10 ${mod.textColor} mb-4 group-hover:scale-110 transition-transform`} />
-                                <h3 className="text-xl font-bold text-white mb-2">{mod.title}</h3>
-                                <p className="text-sm text-gray-400 leading-relaxed flex-grow">
-                                    {mod.desc}
-                                </p>
-                            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Contas a Pagar Section */}
+                <div className="lg:col-span-1 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                            <CircleDollarSign className="w-6 h-6 text-red-500" />
+                            Contas a Pagar
+                        </h2>
+                        <Link href="/financial" className="text-xs text-red-400 hover:text-red-300 font-bold uppercase tracking-wider">
+                            Ver tudo
                         </Link>
-                    ))}
+                    </div>
+
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
+                        {metrics.pendingExpenses && metrics.pendingExpenses.length > 0 ? (
+                            <div className="divide-y divide-neutral-800">
+                                {metrics.pendingExpenses.map((exp, idx) => {
+                                    const isOverdue = exp.due_date && new Date(exp.due_date) < new Date(new Date().setHours(0,0,0,0))
+                                    return (
+                                        <div key={exp.id} className="p-4 hover:bg-neutral-800/50 transition">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <p className="text-sm font-bold text-gray-200 line-clamp-1">{exp.description}</p>
+                                                <p className={`text-sm font-black whitespace-nowrap ml-2 ${showValues ? 'text-white' : 'text-gray-600'}`}>
+                                                    {maskBRL(exp.amount)}
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className={`w-3 h-3 ${isOverdue ? 'text-red-500' : 'text-gray-500'}`} />
+                                                    <span className={`text-[11px] font-medium ${isOverdue ? 'text-red-400' : 'text-gray-500'}`}>
+                                                        Vence {exp.due_date ? new Date(exp.due_date + 'T12:00:00').toLocaleDateString() : '—'}
+                                                        {isOverdue && ' (Vencido)'}
+                                                    </span>
+                                                </div>
+                                                <span className="text-[10px] uppercase bg-neutral-800 text-gray-500 px-1.5 py-0.5 rounded border border-neutral-700">
+                                                    {exp.payment_method || 'Boleto'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : (
+                            <div className="p-8 text-center">
+                                <p className="text-gray-500 text-sm italic">Nenhuma conta pendente.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Modules Grid */}
+                <div className="lg:col-span-2 space-y-4">
+                    <h2 className="text-2xl font-bold text-white">Módulos do Sistema</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {modules.map((mod, idx) => (
+                            <Link
+                                href={mod.path}
+                                key={idx}
+                                className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300"
+                            >
+                                <div className={`absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br ${mod.color} rounded-full opacity-20 group-hover:scale-150 transition-transform duration-500 blur-2xl`}></div>
+
+                                <div className="relative z-10 flex flex-col h-full">
+                                    <mod.icon className={`w-10 h-10 ${mod.textColor} mb-4 group-hover:scale-110 transition-transform`} />
+                                    <h3 className="text-xl font-bold text-white mb-2">{mod.title}</h3>
+                                    <p className="text-sm text-gray-400 leading-relaxed flex-grow">
+                                        {mod.desc}
+                                    </p>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
                 </div>
             </div>
 

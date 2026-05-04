@@ -170,6 +170,8 @@ export default function ManualStockEntry() {
 
             // 2. Upsert produtos por (sku + supplier) — mesma estratégia do XML
             //    Sem EAN porque o usuário pode não ter, e match por nome é arriscado.
+            const stockEntryItemsRows = []
+
             for (const it of items) {
                 let existingProd = null
                 if (it.sku && it.sku.trim()) {
@@ -183,15 +185,18 @@ export default function ManualStockEntry() {
                     existingProd = data
                 }
 
+                let finalProductId
                 if (existingProd) {
                     await supabase.from('products').update({
                         quantity: Number(existingProd.quantity || 0) + parseFloat(it.quantity),
                         cost_price: parseFloat(it.cost_price),
                         selling_price: parseFloat(it.selling_price),
+                        profit_margin_percent: parseFloat(it.margin) || 0,
                         supplier_id: supplierId
                     }).eq('id', existingProd.id)
+                    finalProductId = existingProd.id
                 } else {
-                    await supabase.from('products').insert([{
+                    const { data: newProd, error: insErr } = await supabase.from('products').insert([{
                         tenant_id: tenantId,
                         sku: it.sku?.trim() || null,
                         ean: it.ean?.trim() || null,
@@ -201,8 +206,21 @@ export default function ManualStockEntry() {
                         quantity: parseFloat(it.quantity),
                         profit_margin_percent: parseFloat(it.margin) || 0,
                         supplier_id: supplierId
-                    }])
+                    }]).select('id').single()
+                    if (insErr) throw insErr
+                    finalProductId = newProd.id
                 }
+
+                stockEntryItemsRows.push({
+                    tenant_id: tenantId,
+                    product_id: finalProductId,
+                    sku: it.sku?.trim() || null,
+                    ean: it.ean?.trim() || null,
+                    name: it.name.trim(),
+                    quantity: parseFloat(it.quantity),
+                    cost_price: parseFloat(it.cost_price),
+                    selling_price: parseFloat(it.selling_price)
+                })
             }
 
             // 3. Stock entry — xml_key NULL marca origem manual
@@ -218,7 +236,15 @@ export default function ManualStockEntry() {
                 .single()
             if (entryErr) throw entryErr
 
-            // 4. Transactions (mesmo padrão do XML)
+            // 4. Stock Entry Items
+            const finalEntryItems = stockEntryItemsRows.map(row => ({
+                ...row,
+                stock_entry_id: entry.id
+            }))
+            const { error: itemsError } = await supabase.from('stock_entry_items').insert(finalEntryItems)
+            if (itemsError) throw itemsError
+
+            // 5. Transactions (mesmo padrão do XML)
             const nowIso = new Date().toISOString()
             const supplierLabel = supplierOption.isNew ? supplierOption.label : (suppliers.find(s => s.id === supplierId)?.name || 'Fornecedor')
             let txRows
