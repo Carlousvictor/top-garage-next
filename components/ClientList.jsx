@@ -248,7 +248,7 @@ export default function ClientList({ initialClients }) {
                                 <tr>
                                     <td colSpan="4" className="px-6 py-4 text-center text-gray-400">
                                         Nenhum cliente para essa busca.
-                                        <button type="button" onClick={() => setSearchText('')} className="ml-2 text-red-400 underline">Limpar</button>
+                                        <button type="button" onClick={() => setSearchText('')} className="ml-2 text-red-400 hover:text-red-300 underline">Limpar</button>
                                     </td>
                                 </tr>
                             )}
