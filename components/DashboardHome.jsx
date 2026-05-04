@@ -293,6 +293,7 @@ export default function DashboardHome({ metrics }) {
                                 <p className="text-gray-500 text-sm italic">Nenhuma conta pendente.</p>
                             </div>
                         )}
+                        </div>
                     </div>
                 </div>
             </div>
