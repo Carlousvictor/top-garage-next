@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { XMLParser } from 'fast-xml-parser';
 import { createClient } from '../utils/supabase/client';
 import { useAuth } from '../context/AuthContext';
+import { X } from 'lucide-react';
 
 export default function StockImport() {
     const supabase = createClient();
@@ -16,6 +17,7 @@ export default function StockImport() {
     const [installments, setInstallments] = useState([]); // Parcelas extraídas de <cobr>/<dup>
     const [isPaidUpfront, setIsPaidUpfront] = useState(false); // UI flag para NFe à vista (sem <cobr>)
     const [upfrontPaymentMethod, setUpfrontPaymentMethod] = useState('Dinheiro');
+    const [editingItemIndex, setEditingItemIndex] = useState(null);
 
     const addLog = (message, type = 'info') => {
         setLogs(prev => [...prev, { message, type, time: new Date().toLocaleTimeString() }]);
@@ -331,6 +333,7 @@ export default function StockImport() {
                         <table className="w-full text-sm text-left text-gray-400">
                             <thead className="text-xs text-gray-200 uppercase bg-black">
                                 <tr>
+                                    <th className="px-4 py-3">Ações</th>
                                     <th className="px-4 py-3">Status</th>
                                     <th className="px-4 py-3">SKU</th>
                                     <th className="px-4 py-3">EAN</th>
@@ -344,6 +347,16 @@ export default function StockImport() {
                             <tbody>
                                 {previewItems.map((item, index) => (
                                     <tr key={item.id} className="border-b border-neutral-800 hover:bg-neutral-800">
+                                        <td className="px-4 py-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingItemIndex(index)}
+                                                className="p-1.5 bg-neutral-700 hover:bg-red-600 text-gray-300 hover:text-white rounded transition"
+                                                title="Editar todos os dados do item"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                                            </button>
+                                        </td>
                                         <td className="px-4 py-2">
                                             {item.matchStatus === 'matched_ean' ? (
                                                 <span className="inline-block bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded border border-green-800" title={`Já cadastrado como: ${item.matchedProductName}`}>
@@ -359,7 +372,7 @@ export default function StockImport() {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-4 py-2 font-mono text-xs">{item.sku}</td>
+                                        <td className="px-4 py-2 font-mono text-xs text-gray-300">{item.sku}</td>
                                         <td className="px-4 py-2 font-mono text-xs text-gray-500">{item.ean || '—'}</td>
                                         <td className="px-4 py-2">
                                             <input
@@ -507,6 +520,106 @@ export default function StockImport() {
                             </div>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Edit Item Modal */}
+            {editingItemIndex !== null && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-4">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl">
+                        <div className="flex items-center justify-between p-4 border-b border-neutral-800">
+                            <h2 className="text-lg font-bold text-white">Editar Dados do Item</h2>
+                            <button
+                                onClick={() => setEditingItemIndex(null)}
+                                className="p-2 hover:bg-neutral-800 rounded-full transition-colors text-gray-400 hover:text-white"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Código (SKU)</label>
+                                    <input
+                                        type="text"
+                                        value={previewItems[editingItemIndex].sku || ''}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'sku', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                        placeholder="Ex: 12345"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Cód. Barras (EAN)</label>
+                                    <input
+                                        type="text"
+                                        value={previewItems[editingItemIndex].ean || ''}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'ean', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                        placeholder="Ex: 7891234567890"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-1">
+                                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Descrição / Nome do Produto</label>
+                                <input
+                                    type="text"
+                                    value={previewItems[editingItemIndex].name || ''}
+                                    onChange={(e) => handleItemChange(editingItemIndex, 'name', e.target.value)}
+                                    className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-4 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Qtd</label>
+                                    <input
+                                        type="number"
+                                        value={previewItems[editingItemIndex].quantity}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'quantity', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custo (R$)</label>
+                                    <input
+                                        type="number"
+                                        value={previewItems[editingItemIndex].cost_price}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'cost_price', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Margem (%)</label>
+                                    <input
+                                        type="number"
+                                        value={previewItems[editingItemIndex].margin}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'margin', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-green-400 uppercase tracking-wider">Venda (R$)</label>
+                                    <input
+                                        type="number"
+                                        value={previewItems[editingItemIndex].selling_price}
+                                        onChange={(e) => handleItemChange(editingItemIndex, 'selling_price', e.target.value)}
+                                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-green-400 font-bold focus:outline-none focus:border-green-500 transition-colors"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-neutral-800 bg-black/20 flex justify-end">
+                            <button
+                                onClick={() => setEditingItemIndex(null)}
+                                className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-red-900/20 transition-colors"
+                            >
+                                Concluir Edição
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
