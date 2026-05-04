@@ -9,7 +9,7 @@ import { Activity, BarChart3, ArrowRight } from 'lucide-react'
 
 export default function FinancialDashboard({ initialTransactions, initialSummary }) {
     const supabase = createClient()
-    const { companyId } = useAuth()
+    const { tenantId } = useAuth()
     const toast = useToast()
     const confirm = useConfirm()
 
@@ -131,7 +131,7 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
         e.preventDefault()
         setLoading(true)
 
-        if (!companyId) {
+        if (!tenantId) {
             toast.error('Empresa não identificada.')
             setLoading(false)
             return
@@ -139,7 +139,7 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
 
         try {
             const payload = {
-                company_id: companyId,
+                tenant_id: tenantId,
                 description: newTransaction.description,
                 amount: parseFloat(newTransaction.amount),
                 type: activeTab === 'payable' ? 'expense' : 'income',
