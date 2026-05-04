@@ -22,9 +22,12 @@ CREATE TABLE IF NOT EXISTS public.transaction_partial_payments (
 
 ALTER TABLE public.transaction_partial_payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Tenant Isolation - Partial Payments" ON public.transaction_partial_payments;
 CREATE POLICY "Tenant Isolation - Partial Payments"
   ON public.transaction_partial_payments
-  FOR ALL USING (tenant_id = public.user_tenant_id());
+  FOR ALL
+  USING (tenant_id = public.user_tenant_id())
+  WITH CHECK (tenant_id = public.user_tenant_id());
 
 CREATE INDEX IF NOT EXISTS idx_partial_payments_tx
   ON public.transaction_partial_payments(transaction_id);
