@@ -163,94 +163,93 @@ export default function DashboardHome({ metrics }) {
                 </Link>
             )}
 
-            {/* Quick Metrics / Indicators */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-blue-500/50 transition cursor-pointer" onClick={() => router.push('/os')}>
-                    <div>
-                        <p className="text-gray-400 text-sm font-medium mb-1">OS em Aberto/Andamento</p>
-                        <h3 className="text-2xl font-black text-white">{metrics.activeOS}</h3>
-                    </div>
-                    <div className="p-2.5 bg-blue-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                        <Wrench className="w-5 h-5 text-blue-500" />
-                    </div>
-                </div>
-
-                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-red-500/50 transition cursor-pointer" onClick={() => router.push('/stock?filter=low-stock')}>
-                    <div>
-                        <p className="text-gray-400 text-sm font-medium mb-1">Itens c/ Estoque Baixo</p>
-                        <h3 className={`text-2xl font-black ${metrics.lowStock > 0 ? 'text-red-500' : 'text-white'}`}>
-                            {metrics.lowStock}
-                        </h3>
-                    </div>
-                    <div className="p-2.5 bg-red-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                        <AlertCircle className="w-5 h-5 text-red-500" />
-                    </div>
-                </div>
-
-                {/* Revisões agendadas vencendo em até 7 dias — pessoas pra contatar via CRM. */}
-                <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-amber-500/50 transition cursor-pointer" onClick={() => router.push('/crm')}>
-                    <div>
-                        <p className="text-gray-400 text-sm font-medium mb-1">Revisões em até 7 dias</p>
-                        <h3 className={`text-2xl font-black ${metrics.upcomingRevisions > 0 ? 'text-amber-400' : 'text-white'}`}>
-                            {metrics.upcomingRevisions}
-                        </h3>
-                        <p className="text-[11px] text-gray-500 mt-0.5">clientes pra avisar</p>
-                    </div>
-                    <div className="p-2.5 bg-amber-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                        <CalendarClock className="w-5 h-5 text-amber-400" />
-                    </div>
-                </div>
-
-                {/* Receita Hoje - dois valores + status de fechamento */}
-                <div
-                    className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl group hover:border-green-500/50 transition cursor-pointer"
-                    onClick={() => router.push('/financial/daily')}
-                >
-                    <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                            <p className="text-gray-400 text-sm font-medium">Receita de Hoje</p>
-                            {metrics.todayClosed ? (
-                                <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-emerald-500/30">
-                                    <Lock className="w-3 h-3" /> Fechado
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-amber-500/30">
-                                    <Unlock className="w-3 h-3" /> Aberto
-                                </span>
-                            )}
-                        </div>
-                        <div className="p-2.5 bg-green-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                            <TrendingUp className="w-5 h-5 text-green-500" />
-                        </div>
-                    </div>
-
-                    <div className="space-y-2">
+            {/* Top Section: Metrics & Contas a Pagar */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                {/* Left Side: 4 Quick Metrics */}
+                <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 h-min">
+                    <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-blue-500/50 transition cursor-pointer" onClick={() => router.push('/os')}>
                         <div>
-                            <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Total do dia (Entradas)</p>
-                            <h3 className={`text-2xl font-black text-green-400 ${!showValues && 'tracking-widest'}`}>
-                                {maskBRL(metrics.todayIncome)}
+                            <p className="text-gray-400 text-sm font-medium mb-1">OS em Aberto/Andamento</p>
+                            <h3 className="text-2xl font-black text-white">{metrics.activeOS}</h3>
+                        </div>
+                        <div className="p-2.5 bg-blue-500/10 rounded-xl group-hover:scale-110 transition-transform">
+                            <Wrench className="w-5 h-5 text-blue-500" />
+                        </div>
+                    </div>
+
+                    <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-red-500/50 transition cursor-pointer" onClick={() => router.push('/stock?filter=low-stock')}>
+                        <div>
+                            <p className="text-gray-400 text-sm font-medium mb-1">Itens c/ Estoque Baixo</p>
+                            <h3 className={`text-2xl font-black ${metrics.lowStock > 0 ? 'text-red-500' : 'text-white'}`}>
+                                {metrics.lowStock}
                             </h3>
                         </div>
-                        <div className="border-t border-neutral-800 pt-2 flex items-center gap-2">
-                            <PiggyBank className="w-4 h-4 text-blue-400 shrink-0" />
+                        <div className="p-2.5 bg-red-500/10 rounded-xl group-hover:scale-110 transition-transform">
+                            <AlertCircle className="w-5 h-5 text-red-500" />
+                        </div>
+                    </div>
+
+                    <div className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl flex items-start justify-between group hover:border-amber-500/50 transition cursor-pointer" onClick={() => router.push('/crm')}>
+                        <div>
+                            <p className="text-gray-400 text-sm font-medium mb-1">Revisões em até 7 dias</p>
+                            <h3 className={`text-2xl font-black ${metrics.upcomingRevisions > 0 ? 'text-amber-400' : 'text-white'}`}>
+                                {metrics.upcomingRevisions}
+                            </h3>
+                            <p className="text-[11px] text-gray-500 mt-0.5">clientes pra avisar</p>
+                        </div>
+                        <div className="p-2.5 bg-amber-500/10 rounded-xl group-hover:scale-110 transition-transform">
+                            <CalendarClock className="w-5 h-5 text-amber-400" />
+                        </div>
+                    </div>
+
+                    <div
+                        className="bg-neutral-900 border border-neutral-800 p-4 rounded-2xl shadow-xl group hover:border-green-500/50 transition cursor-pointer"
+                        onClick={() => router.push('/financial/daily')}
+                    >
+                        <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <p className="text-gray-400 text-sm font-medium">Receita de Hoje</p>
+                                {metrics.todayClosed ? (
+                                    <span className="inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                        <Lock className="w-3 h-3" /> Fechado
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-1 bg-amber-500/15 text-amber-400 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border border-amber-500/30">
+                                        <Unlock className="w-3 h-3" /> Aberto
+                                    </span>
+                                )}
+                            </div>
+                            <div className="p-2.5 bg-green-500/10 rounded-xl group-hover:scale-110 transition-transform">
+                                <TrendingUp className="w-5 h-5 text-green-500" />
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
                             <div>
-                                <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Saldo (Entradas − Saídas)</p>
-                                <h4 className={`text-base font-bold ${!showValues ? 'text-gray-400 tracking-widest' : (metrics.todayNet >= 0 ? 'text-white' : 'text-red-400')}`}>
-                                    {maskBRL(metrics.todayNet)}
-                                </h4>
+                                <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Total do dia (Entradas)</p>
+                                <h3 className={`text-2xl font-black text-green-400 ${!showValues && 'tracking-widest'}`}>
+                                    {maskBRL(metrics.todayIncome)}
+                                </h3>
+                            </div>
+                            <div className="border-t border-neutral-800 pt-2 flex items-center gap-2">
+                                <PiggyBank className="w-4 h-4 text-blue-400 shrink-0" />
+                                <div>
+                                    <p className="text-[10px] uppercase text-gray-500 font-semibold tracking-wide">Saldo (Entradas − Saídas)</p>
+                                    <h4 className={`text-base font-bold ${!showValues ? 'text-gray-400 tracking-widest' : (metrics.todayNet >= 0 ? 'text-white' : 'text-red-400')}`}>
+                                        {maskBRL(metrics.todayNet)}
+                                    </h4>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Modules Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                {/* Contas a Pagar Section */}
+                {/* Right Side: Contas a Pagar Section */}
                 <div className="lg:col-span-1 space-y-4">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                            <CircleDollarSign className="w-6 h-6 text-red-500" />
+                        <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                            <CircleDollarSign className="w-5 h-5 text-red-500" />
                             Contas a Pagar
                         </h2>
                         <Link href="/financial" className="text-xs text-red-400 hover:text-red-300 font-bold uppercase tracking-wider">
@@ -258,13 +257,13 @@ export default function DashboardHome({ metrics }) {
                         </Link>
                     </div>
 
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-2xl">
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl h-full max-h-[300px] overflow-y-auto custom-scrollbar">
                         {metrics.pendingExpenses && metrics.pendingExpenses.length > 0 ? (
                             <div className="divide-y divide-neutral-800">
                                 {metrics.pendingExpenses.map((exp, idx) => {
                                     const isOverdue = exp.due_date && new Date(exp.due_date) < new Date(new Date().setHours(0,0,0,0))
                                     return (
-                                        <div key={exp.id} className="p-4 hover:bg-neutral-800/50 transition">
+                                        <div key={exp.id} className="p-3 hover:bg-neutral-800/50 transition">
                                             <div className="flex justify-between items-start mb-1">
                                                 <p className="text-sm font-bold text-gray-200 line-clamp-1">{exp.description}</p>
                                                 <p className={`text-sm font-black whitespace-nowrap ml-2 ${showValues ? 'text-white' : 'text-gray-600'}`}>
@@ -288,35 +287,36 @@ export default function DashboardHome({ metrics }) {
                                 })}
                             </div>
                         ) : (
-                            <div className="p-8 text-center">
+                            <div className="p-8 text-center flex flex-col items-center justify-center h-full">
+                                <CircleDollarSign className="w-8 h-8 text-neutral-700 mb-2" />
                                 <p className="text-gray-500 text-sm italic">Nenhuma conta pendente.</p>
                             </div>
                         )}
                     </div>
                 </div>
+            </div>
 
-                {/* Modules Grid */}
-                <div className="lg:col-span-2 space-y-4">
-                    <h2 className="text-2xl font-bold text-white">Módulos do Sistema</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {modules.map((mod, idx) => (
-                            <Link
-                                href={mod.path}
-                                key={idx}
-                                className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300"
-                            >
-                                <div className={`absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br ${mod.color} rounded-full opacity-20 group-hover:scale-150 transition-transform duration-500 blur-2xl`}></div>
+            {/* Modules Grid */}
+            <div className="space-y-4 pt-6 border-t border-neutral-800/50">
+                <h2 className="text-2xl font-bold text-white">Módulos do Sistema</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {modules.map((mod, idx) => (
+                        <Link
+                            href={mod.path}
+                            key={idx}
+                            className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 relative overflow-hidden group hover:-translate-y-1 hover:shadow-2xl hover:shadow-red-900/20 transition-all duration-300"
+                        >
+                            <div className={`absolute -right-4 -top-4 w-24 h-24 bg-gradient-to-br ${mod.color} rounded-full opacity-20 group-hover:scale-150 transition-transform duration-500 blur-2xl`}></div>
 
-                                <div className="relative z-10 flex flex-col h-full">
-                                    <mod.icon className={`w-10 h-10 ${mod.textColor} mb-4 group-hover:scale-110 transition-transform`} />
-                                    <h3 className="text-xl font-bold text-white mb-2">{mod.title}</h3>
-                                    <p className="text-sm text-gray-400 leading-relaxed flex-grow">
-                                        {mod.desc}
-                                    </p>
-                                </div>
-                            </Link>
-                        ))}
-                    </div>
+                            <div className="relative z-10 flex flex-col h-full">
+                                <mod.icon className={`w-10 h-10 ${mod.textColor} mb-4 group-hover:scale-110 transition-transform`} />
+                                <h3 className="text-xl font-bold text-white mb-2">{mod.title}</h3>
+                                <p className="text-sm text-gray-400 leading-relaxed flex-grow">
+                                    {mod.desc}
+                                </p>
+                            </div>
+                        </Link>
+                    ))}
                 </div>
             </div>
 
