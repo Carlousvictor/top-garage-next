@@ -43,6 +43,16 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     // Desconto em % aplicado sobre o subtotal — aditivo, opcional. 0 = sem desconto.
     // Limite 0..100; o total líquido é o que vai gravado em transactions.amount.
     const [discountPercent, setDiscountPercent] = useState('')
+    // Data da venda — default = hoje. Permite cadastrar venda retroativa
+    // pra importar histórico ou lançar venda esquecida.
+    const todayLocalISO = (() => {
+        const d = new Date()
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    })()
+    const [serviceDate, setServiceDate] = useState(todayLocalISO)
+    // Controle explícito da baixa de estoque — default true. Em vendas
+    // retroativas (item já saiu no passado), operador deve desmarcar.
+    const [deductStock, setDeductStock] = useState(true)
     const [loading, setLoading] = useState(false)
 
     // Resolve o nome do cliente pra gravar na descrição da transação.
@@ -235,6 +245,11 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                     subtotalAmount: calculateSubtotal(),
                     discountAmount: calculateDiscountAmount(),
                     total,
+                    service_date_iso: (() => {
+                        const [y, m, d] = serviceDate.split('-').map(Number)
+                        return new Date(y, m - 1, d, 12, 0, 0).toISOString()
+                    })(),
+                    deduct_stock: deductStock,
                 }),
             })
 
@@ -251,6 +266,8 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
             setPayment1Amount('')
             setPayment2Amount('')
             setDiscountPercent('')
+            setServiceDate(todayLocalISO)
+            setDeductStock(true)
             // router.refresh() preserva o toast de sucesso (window.location.reload
             // matava o feedback e dava a impressão de que a venda não tinha salvado).
             router.refresh()
@@ -453,6 +470,37 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                         <p className="text-[11px] text-gray-500 mt-1">
                             Se ninguém for selecionado/digitado, a venda fica como <strong>Consumidor</strong>.
                         </p>
+                    </div>
+
+                    <div className="mt-4 mb-4">
+                        <label className="block text-sm text-gray-400 mb-2">Data da Venda:</label>
+                        <input
+                            type="date"
+                            value={serviceDate}
+                            max={todayLocalISO}
+                            onChange={(e) => setServiceDate(e.target.value)}
+                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                        />
+                        {serviceDate !== todayLocalISO && (
+                            <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                Venda retroativa — gravada em <strong>{serviceDate.split('-').reverse().join('/')}</strong>.
+                            </p>
+                        )}
+                        <label className="flex items-center gap-2 mt-2 text-xs text-gray-300 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={deductStock}
+                                onChange={(e) => setDeductStock(e.target.checked)}
+                                className="w-4 h-4 text-red-600 bg-neutral-800 border-neutral-700 rounded"
+                            />
+                            Baixar do estoque
+                        </label>
+                        {serviceDate !== todayLocalISO && deductStock && (
+                            <p className="text-[11px] text-amber-300 mt-1">
+                                Recomendado desmarcar para vendas retroativas (item já saiu no passado).
+                            </p>
+                        )}
                     </div>
 
                     <div className="mt-4 mb-4">

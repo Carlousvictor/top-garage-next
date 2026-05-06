@@ -55,6 +55,8 @@ export async function POST(request) {
         subtotalAmount = null,
         discountAmount = null,
         total,
+        service_date_iso,
+        deduct_stock,
     } = body
 
     if (!Array.isArray(items) || items.length === 0) {
@@ -68,27 +70,31 @@ export async function POST(request) {
     const isPending = status === 'pending'
     const isSplit = !!splitPayment && !isPending && Array.isArray(payments) && payments.length === 2
 
-    // 1. Baixa de estoque (em ambos os casos: paid e pending — cliente já saiu com o produto)
-    for (const item of items) {
-        if (!item?.product_id) continue
-        const qty = Number(item.quantity)
-        if (!Number.isFinite(qty) || qty <= 0) continue
+    // 1. Baixa de estoque — opcional via flag deduct_stock (default true).
+    // Útil pra vendas retroativas (item já saiu no passado).
+    const shouldDeductStock = deduct_stock !== false
+    if (shouldDeductStock) {
+        for (const item of items) {
+            if (!item?.product_id) continue
+            const qty = Number(item.quantity)
+            if (!Number.isFinite(qty) || qty <= 0) continue
 
-        const { data: prod, error: prodErr } = await supabase
-            .from('products')
-            .select('quantity')
-            .eq('id', item.product_id)
-            .maybeSingle()
-        if (prodErr) {
-            return NextResponse.json({ error: 'Erro ao consultar produto: ' + prodErr.message }, { status: 400 })
-        }
-        if (prod) {
-            const { error: updErr } = await supabase
+            const { data: prod, error: prodErr } = await supabase
                 .from('products')
-                .update({ quantity: (prod.quantity ?? 0) - qty })
+                .select('quantity')
                 .eq('id', item.product_id)
-            if (updErr) {
-                return NextResponse.json({ error: 'Erro ao baixar estoque: ' + updErr.message }, { status: 400 })
+                .maybeSingle()
+            if (prodErr) {
+                return NextResponse.json({ error: 'Erro ao consultar produto: ' + prodErr.message }, { status: 400 })
+            }
+            if (prod) {
+                const { error: updErr } = await supabase
+                    .from('products')
+                    .update({ quantity: (prod.quantity ?? 0) - qty })
+                    .eq('id', item.product_id)
+                if (updErr) {
+                    return NextResponse.json({ error: 'Erro ao baixar estoque: ' + updErr.message }, { status: 400 })
+                }
             }
         }
     }
@@ -115,7 +121,7 @@ export async function POST(request) {
             category: 'Venda de Peças',
             amount: totalNum,
             status,
-            date: new Date().toISOString(),
+            date: service_date_iso || new Date().toISOString(),
             payment_method: txPaymentMethod,
             // Visibilidade do desconto — só popula quando >0; senão fica NULL
             subtotal_amount: discPct > 0 ? Number(subtotalAmount) : null,
