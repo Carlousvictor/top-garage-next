@@ -46,7 +46,7 @@ export default async function ReportsPage({ searchParams }) {
     const [txRes, osRes, itemsRes, closuresRes, prevTxRes, prevOsRes, productsRes] = await Promise.all([
         supabase
             .from('transactions')
-            .select('id, type, status, amount, payment_method, category, description, date, transaction_payments(payment_method, amount)')
+            .select('id, type, status, amount, payment_method, category, description, date, subtotal_amount, discount_percent, discount_amount, transaction_payments(payment_method, amount)')
             .eq('status', 'paid')
             .gte('date', fromISO)
             .lte('date', toISO),

@@ -158,6 +158,20 @@ export default function FinancialReports({
         return { income, expense, balance: income - expense, ordersRevenue, ordersCount, avgTicket, byMethod }
     }, [transactions, serviceOrders])
 
+    // Estatísticas de desconto — só inclui transações de receita com desconto
+    // estruturado (>0). Registros antigos (NULL) ficam de fora — sem efeito.
+    const discountStats = useMemo(() => {
+        const withDiscount = transactions.filter((t) =>
+            t.type === 'income' && Number(t.discount_amount) > 0
+        )
+        if (withDiscount.length === 0) return null
+        const grossTotal = withDiscount.reduce((acc, t) => acc + Number(t.subtotal_amount || 0), 0)
+        const discountTotal = withDiscount.reduce((acc, t) => acc + Number(t.discount_amount || 0), 0)
+        const netTotal = withDiscount.reduce((acc, t) => acc + Number(t.amount || 0), 0)
+        const avgPercent = grossTotal > 0 ? (discountTotal / grossTotal) * 100 : 0
+        return { grossTotal, discountTotal, netTotal, avgPercent, count: withDiscount.length }
+    }, [transactions])
+
     const prevSummary = useMemo(() => {
         const income = prevTransactions.filter((t) => t.type === 'income').reduce((a, t) => a + Number(t.amount || 0), 0)
         const expense = prevTransactions.filter((t) => t.type === 'expense').reduce((a, t) => a + Number(t.amount || 0), 0)
@@ -503,6 +517,33 @@ export default function FinancialReports({
                             </table>
                         )}
                     </div>
+
+                    {discountStats && (
+                        <div className="bg-neutral-900 border border-amber-900/40 rounded-xl p-6">
+                            <h3 className="text-lg font-bold text-amber-300 mb-4">
+                                Descontos concedidos no período
+                            </h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase">Total Bruto</p>
+                                    <p className="text-xl font-black text-gray-200">{BRL(discountStats.grossTotal)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase">Total Descontos</p>
+                                    <p className="text-xl font-black text-amber-400">- {BRL(discountStats.discountTotal)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase">Total Líquido</p>
+                                    <p className="text-xl font-black text-green-400">{BRL(discountStats.netTotal)}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-gray-500 uppercase">% médio</p>
+                                    <p className="text-xl font-black text-gray-200">{discountStats.avgPercent.toFixed(1)}%</p>
+                                    <p className="text-[10px] text-gray-500 mt-1">{discountStats.count} venda(s)</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
