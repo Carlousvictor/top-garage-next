@@ -200,14 +200,21 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                 {/* Totals + Pagamento */}
                 <div className="flex justify-end mb-6">
                     <div className="w-1/2 border border-black p-0.5">
-                        <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
-                            <span className="text-xs uppercase font-bold">Total Serviços</span>
-                            <span className="text-sm font-medium">R$ {totalServices.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                        </div>
-                        <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
-                            <span className="text-xs uppercase font-bold">Total Peças</span>
-                            <span className="text-sm font-medium">R$ {totalProducts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                        </div>
+                        {/* Breakdown só aparece quando o lado tem valor > 0 — evita
+                            "R$ 0,00" pendurado em OS que só tem serviços (caso típico
+                            de OS Terceiros) ou só peças. */}
+                        {totalServices > 0 && (
+                            <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
+                                <span className="text-xs uppercase font-bold">Total Serviços</span>
+                                <span className="text-sm font-medium">R$ {totalServices.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        )}
+                        {totalProducts > 0 && (
+                            <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
+                                <span className="text-xs uppercase font-bold">Total Peças</span>
+                                <span className="text-sm font-medium">R$ {totalProducts.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        )}
                         {discPct > 0 && (
                             <>
                                 <div className="flex justify-between items-center bg-gray-100 p-1 border-b border-gray-300">
