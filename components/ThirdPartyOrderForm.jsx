@@ -351,6 +351,7 @@ export default function ThirdPartyOrderForm({ order, initialItems = [] }) {
                 client={{ name: observation || 'Terceiro/Avulso' }}
                 tenant={tenant}
                 currentKm={currentKm}
+                observation={observation}
             />
         </>
     )

@@ -1292,6 +1292,7 @@ export default function ServiceOrderForm({
                 tenant={tenant}
                 discountPercent={getDiscountPercent()}
                 currentKm={currentKm}
+                observation={observation}
             />
 
             <QuickClientModal

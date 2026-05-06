@@ -15,7 +15,7 @@ const TOP_GARAGE_INFO = {
 
 const onlyDigits = (s) => (s || '').replace(/\D/g, '')
 
-export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant, discountPercent, currentKm }) {
+export default function ServiceOrderPrint({ order, items, client, vehicle, paymentMethod, tenant, discountPercent, currentKm, observation }) {
     if (!order) return null
 
     // KM resolvido: prop currentKm (digitada no form, mesmo sem salvar) tem
@@ -28,6 +28,14 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
         }
         return order.current_km || null
     })()
+
+    // Observação resolvida: a prop reflete o textarea ao vivo (digitado mas
+    // ainda não salvo). Cai pra order.observation persistido. Mesmo padrão
+    // do currentKm — evita que a impressão saia sem a obs quando o usuário
+    // imprime antes de salvar.
+    const resolvedObservation = (observation !== undefined && observation !== null && String(observation).trim() !== '')
+        ? observation
+        : order.observation
 
     // Match por CNPJ (não por nome) — nomes mudam, CNPJ é estável.
     // Fallback seguro: tenant indefinido → cabeçalho genérico, nunca vaza
@@ -241,10 +249,10 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                 </div>
 
                 {/* Observations */}
-                {order.observation && (
+                {resolvedObservation && (
                     <div className="mb-4 border border-gray-300 p-2 text-xs">
                         <span className="font-bold uppercase block mb-1 underline">Observações Técnicas:</span>
-                        <p className="whitespace-pre-wrap">{order.observation}</p>
+                        <p className="whitespace-pre-wrap">{resolvedObservation}</p>
                     </div>
                 )}
 
