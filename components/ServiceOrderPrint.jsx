@@ -48,10 +48,18 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
     const products = items.filter(i => i.type === 'product')
     const services = items.filter(i => i.type !== 'product')
 
-    const safeSum = (list) => list.reduce((acc, i) => acc + ((i.quantity ?? 1) * (i.unit_price ?? 0)), 0)
+    // Number() coercion explícita: numeric do Postgres pode chegar como string
+    // via Supabase JS, e string + number = concatenação ("0" + 100 = "0100").
+    const safeSum = (list) => list.reduce((acc, i) => {
+        const qty = Number(i.quantity ?? 1)
+        const price = Number(i.unit_price ?? 0)
+        return acc + (qty * price)
+    }, 0)
     const totalProducts = safeSum(products)
     const totalServices = safeSum(services)
-    const subtotalAll = safeSum(items)
+    // Subtotal é a soma das duas linhas que aparecem acima dele no PDF —
+    // garante que "Total Geral" = "Total Peças" + "Total Serviços" sempre.
+    const subtotalAll = totalProducts + totalServices
 
     // Desconto opcional — quando >0, mostra a linha de desconto e ajusta o
     // "Total Geral" pra refletir o líquido (que é o que foi salvo na OS).
