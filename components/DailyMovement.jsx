@@ -518,11 +518,20 @@ export default function DailyMovement() {
                     </h3>
 
                     <div className="overflow-y-auto flex-1 pr-2 space-y-3">
-                        {transactions.map(t => (
+                        {transactions.map(t => {
+                            const hasDiscount = Number(t.discount_amount) > 0
+                            return (
                             <div key={t.id} className="flex justify-between items-center bg-neutral-900 p-4 rounded-xl border border-neutral-800 border-l-4 border-l-transparent"
                                 style={{ borderLeftColor: t.type === 'income' ? '#22c55e' : '#ef4444' }}>
                                 <div>
-                                    <p className="text-sm font-bold text-gray-200">{t.description}</p>
+                                    <p className="text-sm font-bold text-gray-200">
+                                        {t.description}
+                                        {hasDiscount && (
+                                            <span className="ml-2 inline-flex items-center bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold align-middle">
+                                                Desc {Number(t.discount_percent).toFixed(0)}%
+                                            </span>
+                                        )}
+                                    </p>
                                     <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
                                         <span>{new Date(t.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                                         {t.payment_method === 'Múltiplo' && Array.isArray(t.transaction_payments) && t.transaction_payments.length > 0 ? (
@@ -539,11 +548,23 @@ export default function DailyMovement() {
                                         ) : null}
                                     </div>
                                 </div>
-                                <span className={`font-black ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
-                                    {t.type === 'income' ? '+' : '-'} {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                </span>
+                                <div className="text-right">
+                                    <span className={`font-black ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
+                                        {t.type === 'income' ? '+' : '-'} {Number(t.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                    </span>
+                                    {hasDiscount && (
+                                        <p className="text-[10px] text-gray-500 mt-0.5">
+                                            Bruto {Number(t.subtotal_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            {' '}
+                                            <span className="text-amber-400">
+                                                (-{Number(t.discount_amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
                             </div>
-                        ))}
+                            )
+                        })}
 
                         {transactions.length === 0 && (
                             <div className="text-center py-10 text-gray-500">
