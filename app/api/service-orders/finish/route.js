@@ -50,9 +50,12 @@ export async function POST(request) {
         next_revision_date,
         next_revision_km,
         // Desconto em % aplicado pelo frontend antes de calcular `total`.
-        // Opcional; só usamos pra anexar tag na descrição da transação. O total
-        // já chega líquido (frontend faz subtotal - desconto) — sem isso, sem alteração.
+        // Opcional; usamos pra anexar tag na descrição da transação E pra popular
+        // as colunas estruturadas (subtotal_amount, discount_amount). O total já
+        // chega líquido — sem esses campos, comportamento idêntico ao legado.
         discount_percent,
+        subtotal_amount,
+        discount_amount,
     } = await request.json()
 
     if (!order_id) {
@@ -121,6 +124,11 @@ export async function POST(request) {
             status: 'paid',
             payment_method: isSplit ? 'Múltiplo' : (payment_method || 'Dinheiro'),
             date: service_date_iso,
+            // Visibilidade do desconto — só popula quando >0; senão fica NULL
+            // e relatórios/listagens fazem fallback ao layout antigo.
+            subtotal_amount: Number.isFinite(discNum) && discNum > 0 ? Number(subtotal_amount) : null,
+            discount_percent: Number.isFinite(discNum) && discNum > 0 ? discNum : null,
+            discount_amount: Number.isFinite(discNum) && discNum > 0 ? Number(discount_amount) : null,
         }])
         .select('id')
         .single()

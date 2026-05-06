@@ -450,6 +450,8 @@ export default function ServiceOrderForm({
                     plate,
                     total,
                     discount_percent: getDiscountPercent() || null,
+                    subtotal_amount: calculateSubtotal(),
+                    discount_amount: calculateDiscountAmount(),
                     service_date_iso: serviceDateISO,
                     is_retroactive: isRetroactive,
                     payment_method: paymentMethod,

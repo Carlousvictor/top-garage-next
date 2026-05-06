@@ -52,6 +52,8 @@ export async function POST(request) {
         splitPayment = false,
         payments = null,
         discountPercent = 0,
+        subtotalAmount = null,
+        discountAmount = null,
         total,
     } = body
 
@@ -115,6 +117,10 @@ export async function POST(request) {
             status,
             date: new Date().toISOString(),
             payment_method: txPaymentMethod,
+            // Visibilidade do desconto — só popula quando >0; senão fica NULL
+            subtotal_amount: discPct > 0 ? Number(subtotalAmount) : null,
+            discount_percent: discPct > 0 ? discPct : null,
+            discount_amount: discPct > 0 ? Number(discountAmount) : null,
         }])
         .select('id')
         .single()

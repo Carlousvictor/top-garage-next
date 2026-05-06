@@ -232,6 +232,8 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                     splitPayment: isSplit,
                     payments,
                     discountPercent: getDiscountPercent(),
+                    subtotalAmount: calculateSubtotal(),
+                    discountAmount: calculateDiscountAmount(),
                     total,
                 }),
             })
