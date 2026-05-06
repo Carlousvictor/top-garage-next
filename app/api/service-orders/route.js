@@ -49,6 +49,12 @@ export async function POST(request) {
         current_km,
         next_revision_km,
         total,
+        // Desconto — usado pra (a) anexar tag em descrição da transação relacionada
+        // e (b) sincronizar as colunas estruturadas (subtotal_amount, etc) na transação
+        // já existente quando a OS é editada após finalizada.
+        discount_percent,
+        subtotal_amount,
+        discount_amount,
     } = body
 
     const orderData = {
@@ -116,6 +122,30 @@ export async function POST(request) {
             .insert(itemsToInsert)
 
         if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 400 })
+    }
+
+    // Sincroniza desconto + total na transação relacionada (se existir).
+    // Casos cobertos:
+    // - OS finalizada teve o desconto editado depois → transação atualiza, Movimento Diário/Relatórios refletem.
+    // - OS sem transação (orçamento, ainda não finalizada) → UPDATE não acha nada, no-op.
+    // Mudança aditiva: se a transação foi criada antes deste código existir e tem
+    // discount_amount NULL, agora passa a refletir o desconto editado.
+    if (orderId && id) {
+        const discNum = Number(discount_percent)
+        const hasDiscount = Number.isFinite(discNum) && discNum > 0
+        const txPatch = {
+            amount: total || 0,
+            subtotal_amount: hasDiscount && subtotal_amount != null ? Number(subtotal_amount) : null,
+            discount_percent: hasDiscount ? discNum : null,
+            discount_amount: hasDiscount && discount_amount != null ? Number(discount_amount) : null,
+        }
+        await supabase
+            .from('transactions')
+            .update(txPatch)
+            .eq('related_os_id', orderId)
+            .eq('tenant_id', tenantId)
+        // Erro ignorado de propósito: se não existir transação relacionada (orçamento,
+        // OS aberta), o UPDATE não acha nada — comportamento esperado.
     }
 
     return NextResponse.json({ orderId })

@@ -370,6 +370,8 @@ export default function ServiceOrderForm({
                     next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
                     total,
                     discount_percent: getDiscountPercent() || null,
+                    subtotal_amount: calculateSubtotal(),
+                    discount_amount: calculateDiscountAmount(),
                     service_date_iso: serviceDateISO,
                     items: items.map(item => ({
                         product_id: item.product_id || null,
@@ -535,6 +537,8 @@ export default function ServiceOrderForm({
                     next_revision_km: nextRevisionKm ? parseInt(nextRevisionKm.replace(/\D/g, ''), 10) : null,
                     total: calculateTotal(),
                     discount_percent: getDiscountPercent() || null,
+                    subtotal_amount: calculateSubtotal(),
+                    discount_amount: calculateDiscountAmount(),
                     items: items.map(item => ({
                         product_id: item.product_id || null,
                         service_id: item.service_id || null,
