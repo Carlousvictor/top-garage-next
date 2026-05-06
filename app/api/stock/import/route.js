@@ -62,7 +62,7 @@ export async function POST(request) {
         if (supplier) {
             supplierId = supplier.id;
         } else {
-            const { data: newSupplier, error: createError } = await supabase
+            let { data: newSupplier, error: createError } = await supabase
                 .from('suppliers')
                 .insert([{
                     tenant_id: tenantId,
@@ -71,6 +71,23 @@ export async function POST(request) {
                 }])
                 .select()
                 .single();
+
+            // 23505 = unique_violation. Depois da migração que torna o CNPJ único
+            // por tenant, a única forma de cair aqui é uma corrida com outra
+            // importação concorrente do mesmo fornecedor — basta re-buscar.
+            if (createError?.code === '23505') {
+                const { data: retried } = await supabase
+                    .from('suppliers')
+                    .select('id')
+                    .eq('cnpj', importData.supplierCNPJ)
+                    .eq('tenant_id', tenantId)
+                    .maybeSingle();
+                if (retried) {
+                    newSupplier = retried;
+                    createError = null;
+                }
+            }
+
             if (createError) throw new Error(`Erro ao criar fornecedor: ${createError.message}`);
             supplierId = newSupplier.id;
         }
