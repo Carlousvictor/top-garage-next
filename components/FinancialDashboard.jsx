@@ -558,6 +558,11 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                                         </td>
                                         <td className="px-6 py-4 font-medium text-white">
                                             {t.description}
+                                            {Number(t.discount_amount) > 0 && (
+                                                <span className="ml-2 inline-flex items-center bg-amber-500/15 text-amber-300 border border-amber-500/30 rounded-full px-2 py-0.5 text-[10px] font-bold align-middle">
+                                                    Desc {Number(t.discount_percent).toFixed(0)}%
+                                                </span>
+                                            )}
                                             {Number(t.paid_amount) > 0 && t.status === 'pending' && (
                                                 <div className="text-xs text-emerald-400/80 font-normal mt-1">
                                                     R$ {Number(t.paid_amount).toFixed(2)} já pago de R$ {Number(t.amount).toFixed(2)}
@@ -575,6 +580,13 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
                                                 const valor = showRemaining ? Number(t.amount) - Number(t.paid_amount) : Number(t.amount)
                                                 return `${t.type === 'income' ? '+' : '-'} R$ ${valor.toFixed(2)}`
                                             })()}
+                                            {Number(t.discount_amount) > 0 && (
+                                                <div className="text-[10px] text-gray-500 font-normal mt-0.5">
+                                                    Bruto R$ {Number(t.subtotal_amount).toFixed(2)}
+                                                    {' '}
+                                                    <span className="text-amber-400">(-R$ {Number(t.discount_amount).toFixed(2)})</span>
+                                                </div>
+                                            )}
                                         </td>
                                         {activeTab !== 'overview' && (
                                             <td className="px-6 py-4 text-right">
