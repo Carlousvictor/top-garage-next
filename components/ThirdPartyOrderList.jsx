@@ -55,7 +55,7 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                             {orders.map((order) => (
                                 <tr key={order.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
                                     <td className="px-4 py-3 font-medium text-white">#{order.id}</td>
-                                    <td className="px-4 py-3">{order.clients?.name || order.observation || 'Avulso'}</td>
+                                    <td className="px-4 py-3">{order.clients?.name || order.client_label || order.observation || 'Avulso'}</td>
                                     <td className="px-4 py-3">
                                         <div className="text-white">{order.vehicle_plate}</div>
                                         <div className="text-xs text-gray-500">{order.vehicle_model}</div>

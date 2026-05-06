@@ -43,6 +43,7 @@ export async function POST(request) {
         // Usamos `... in body` no update pra só sobrescrever quando vieram —
         // assim chamadas legadas (sem esses campos) não zeram dados no banco.
         client_id,
+        client_label,
         vehicle_brand,
         vehicle_model,
         observation,
@@ -71,6 +72,7 @@ export async function POST(request) {
         created_at: service_date_iso,
     }
     if (client_id !== undefined) orderUpdate.client_id = client_id || null
+    if (client_label !== undefined) orderUpdate.client_label = client_label || null
     if (vehicle_brand !== undefined) orderUpdate.vehicle_brand = vehicle_brand || null
     if (vehicle_model !== undefined) orderUpdate.vehicle_model = vehicle_model || null
     if (observation !== undefined) orderUpdate.observation = observation || null

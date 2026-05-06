@@ -37,6 +37,7 @@ export async function POST(request) {
         service_date_iso,
         // order fields (tenant_id from client is ignored)
         client_id,
+        client_label,
         vehicle_plate,
         vehicle_brand,
         vehicle_model,
@@ -53,6 +54,7 @@ export async function POST(request) {
     const orderData = {
         tenant_id: tenantId,
         client_id: client_id || null,
+        client_label: client_label || null,
         vehicle_plate: vehicle_plate || null,
         vehicle_brand: vehicle_brand || null,
         vehicle_model: vehicle_model || null,

@@ -67,6 +67,12 @@ export default function ServiceOrderForm({
     }
     const [loading, setLoading] = useState(false)
     const [clientId, setClientId] = useState(order?.client_id || '')
+    // OS Terceiros: nome digitado livremente quando não há cliente cadastrado.
+    // Persistido em service_orders.client_label. Em OS Normal fica não usado.
+    const [clientLabel, setClientLabel] = useState(order?.client_label || '')
+    // Texto digitado em paralelo ao select — capturado pra que o nome digitado
+    // seja aproveitado mesmo sem Enter/click. Espelha padrão do POSForm.jsx.
+    const [clientInputText, setClientInputText] = useState('')
     const [plate, setPlate] = useState(order?.vehicle_plate || '')
     const [brand, setBrand] = useState(order?.vehicle_brand || '')
     const [model, setModel] = useState(order?.vehicle_model || '')
@@ -311,9 +317,16 @@ export default function ServiceOrderForm({
     const handleSubmit = async (e) => {
         e.preventDefault()
 
-        if (!clientId) {
-            toast.error('Selecione um cliente.')
-            return
+        if (isThirdParty) {
+            if (!clientId && !clientLabel?.trim()) {
+                toast.error('Selecione um cliente cadastrado ou digite um nome livre.')
+                return
+            }
+        } else {
+            if (!clientId) {
+                toast.error('Selecione um cliente.')
+                return
+            }
         }
 
         // Carlos: confirmar quando salva como Concluido sem agendar próxima revisão.
@@ -344,6 +357,7 @@ export default function ServiceOrderForm({
                 body: JSON.stringify({
                     id: order?.id || undefined,
                     client_id: clientId || null,
+                    client_label: clientLabel || null,
                     vehicle_plate: plate,
                     vehicle_brand: brand,
                     vehicle_model: model,
@@ -381,9 +395,16 @@ export default function ServiceOrderForm({
     }
 
     const handleFinish = async () => {
-        if (!clientId) {
-            toast.error('Selecione um cliente.')
-            return
+        if (isThirdParty) {
+            if (!clientId && !clientLabel?.trim()) {
+                toast.error('Selecione um cliente cadastrado ou digite um nome livre.')
+                return
+            }
+        } else {
+            if (!clientId) {
+                toast.error('Selecione um cliente.')
+                return
+            }
         }
 
         const serviceDateISO = (() => {
@@ -457,6 +478,7 @@ export default function ServiceOrderForm({
                     payment_method: paymentMethod,
                     payments,  // NEW: null when single, [{method,amount}] when split
                     client_id: clientId || null,
+                    client_label: clientLabel || null,
                     vehicle_brand: brand,
                     vehicle_model: model,
                     observation,
@@ -500,6 +522,7 @@ export default function ServiceOrderForm({
                 body: JSON.stringify({
                     id: order.id,
                     client_id: clientId || null,
+                    client_label: clientLabel || null,
                     vehicle_plate: plate,
                     vehicle_brand: brand,
                     vehicle_model: model,
@@ -593,19 +616,61 @@ export default function ServiceOrderForm({
                                     </button>
                                 </div>
                             </div>
-                            <Select
-                                instanceId="os-client"
-                                value={(() => {
-                                    const c = clients.find(x => String(x.id) === String(clientId))
-                                    return c ? { value: c.id, label: c.name } : null
-                                })()}
-                                onChange={(opt) => setClientId(opt?.value || '')}
-                                options={clients.map(c => ({ value: c.id, label: c.name }))}
-                                placeholder="Selecione um cliente..."
-                                styles={selectStyles}
-                                isClearable
-                                noOptionsMessage={() => 'Nenhum cliente encontrado'}
-                            />
+                            {isThirdParty ? (
+                                <CreatableSelect
+                                    instanceId="os-client"
+                                    isClearable
+                                    placeholder="Selecione, digite o nome ou deixe em branco..."
+                                    formatCreateLabel={(input) => `Usar nome livre: "${input}"`}
+                                    noOptionsMessage={() => 'Nenhum cadastro — pode digitar livremente.'}
+                                    value={(() => {
+                                        const c = clients.find(x => String(x.id) === String(clientId))
+                                        if (c) return { value: c.id, label: c.name }
+                                        if (clientLabel) return { value: clientLabel, label: clientLabel, __isNew__: true }
+                                        return null
+                                    })()}
+                                    onChange={(opt) => {
+                                        if (!opt) {
+                                            setClientId('')
+                                            setClientLabel('')
+                                            return
+                                        }
+                                        if (opt.__isNew__) {
+                                            setClientId('')
+                                            setClientLabel(String(opt.value))
+                                        } else {
+                                            setClientId(opt.value)
+                                            setClientLabel('')
+                                        }
+                                    }}
+                                    onInputChange={(input, action) => {
+                                        if (action.action === 'input-change') setClientInputText(input)
+                                    }}
+                                    onBlur={() => {
+                                        const typed = clientInputText.trim()
+                                        if (typed && !clientId && !clientLabel) {
+                                            setClientLabel(typed)
+                                            setClientInputText('')
+                                        }
+                                    }}
+                                    options={clients.map(c => ({ value: c.id, label: c.name }))}
+                                    styles={selectStyles}
+                                />
+                            ) : (
+                                <Select
+                                    instanceId="os-client"
+                                    value={(() => {
+                                        const c = clients.find(x => String(x.id) === String(clientId))
+                                        return c ? { value: c.id, label: c.name } : null
+                                    })()}
+                                    onChange={(opt) => setClientId(opt?.value || '')}
+                                    options={clients.map(c => ({ value: c.id, label: c.name }))}
+                                    placeholder="Selecione um cliente..."
+                                    styles={selectStyles}
+                                    isClearable
+                                    noOptionsMessage={() => 'Nenhum cliente encontrado'}
+                                />
+                            )}
                         </div>
 
                         {/* Vehicle loading indicator */}
@@ -1214,7 +1279,10 @@ export default function ServiceOrderForm({
             <ServiceOrderPrint
                 order={order}
                 items={items}
-                client={clients.find(c => c.id == clientId) || { name: 'Consumidor Final' }}
+                client={
+                    clients.find(c => c.id == clientId)
+                    || (clientLabel ? { name: clientLabel } : { name: 'Consumidor Final' })
+                }
                 vehicle={selectedVehicle}
                 paymentMethod={paymentMethod}
                 tenant={tenant}
