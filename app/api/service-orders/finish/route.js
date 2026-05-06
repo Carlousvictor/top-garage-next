@@ -79,6 +79,13 @@ export async function POST(request) {
     if (current_km !== undefined) orderUpdate.current_km = current_km ?? null
     if (next_revision_date !== undefined) orderUpdate.next_revision_date = next_revision_date || null
     if (next_revision_km !== undefined) orderUpdate.next_revision_km = next_revision_km ?? null
+    // Persiste discount_percent na OS — espelha service_orders e transactions.
+    // Sem isso, o desconto editado no form na hora de finalizar não persistia
+    // na OS (ficava só na transação criada abaixo).
+    if (discount_percent !== undefined) {
+        const discNumFinish = Number(discount_percent)
+        orderUpdate.discount_percent = Number.isFinite(discNumFinish) && discNumFinish > 0 ? discNumFinish : null
+    }
 
     const { error: osError } = await supabase
         .from('service_orders')

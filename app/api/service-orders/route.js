@@ -57,6 +57,11 @@ export async function POST(request) {
         discount_amount,
     } = body
 
+    // Sanitiza o desconto aqui pra reaproveitar tanto na persistência da OS
+    // quanto no sync da transação relacionada lá embaixo.
+    const discNumPersisted = Number(discount_percent)
+    const hasDiscountPersisted = Number.isFinite(discNumPersisted) && discNumPersisted > 0
+
     const orderData = {
         tenant_id: tenantId,
         client_id: client_id || null,
@@ -72,6 +77,10 @@ export async function POST(request) {
         current_km: current_km ?? null,
         next_revision_km: next_revision_km ?? null,
         total: total || 0,
+        // Persiste o desconto no service_orders pra que reabrir a OS já mostre
+        // o valor lançado. Sem isso, o form lia order.discount_percent = undefined
+        // e o campo voltava em branco.
+        discount_percent: hasDiscountPersisted ? discNumPersisted : null,
         created_at: service_date_iso || new Date().toISOString(),
     }
 
@@ -131,13 +140,11 @@ export async function POST(request) {
     // Mudança aditiva: se a transação foi criada antes deste código existir e tem
     // discount_amount NULL, agora passa a refletir o desconto editado.
     if (orderId && id) {
-        const discNum = Number(discount_percent)
-        const hasDiscount = Number.isFinite(discNum) && discNum > 0
         const txPatch = {
             amount: total || 0,
-            subtotal_amount: hasDiscount && subtotal_amount != null ? Number(subtotal_amount) : null,
-            discount_percent: hasDiscount ? discNum : null,
-            discount_amount: hasDiscount && discount_amount != null ? Number(discount_amount) : null,
+            subtotal_amount: hasDiscountPersisted && subtotal_amount != null ? Number(subtotal_amount) : null,
+            discount_percent: hasDiscountPersisted ? discNumPersisted : null,
+            discount_amount: hasDiscountPersisted && discount_amount != null ? Number(discount_amount) : null,
         }
         await supabase
             .from('transactions')
