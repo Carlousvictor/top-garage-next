@@ -5,7 +5,10 @@ import { createClient } from '../utils/supabase/client';
 import { useAuth } from '../context/AuthContext';
 import { X } from 'lucide-react';
 
-export default function StockImport() {
+// `onEntryCreated` é opcional — chamado após confirmar o import com sucesso
+// pra que o pai (ImportPage) possa atualizar histórico e trocar a aba.
+// Default no-op preserva uso isolado do componente.
+export default function StockImport({ onEntryCreated }) {
     const supabase = createClient();
     const { tenantId } = useAuth();
 
@@ -247,6 +250,9 @@ export default function StockImport() {
             setImportData(null);
             setInstallments([]);
             setIsPaidUpfront(false);
+
+            // Sinaliza pro pai (ImportPage) atualizar histórico e trocar aba.
+            if (typeof onEntryCreated === 'function') onEntryCreated();
 
         } catch (error) {
             if (error.name === 'AbortError') {

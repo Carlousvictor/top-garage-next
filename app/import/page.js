@@ -7,6 +7,16 @@ import { FileText, FileCode2, History } from 'lucide-react'
 
 export default function ImportPage() {
     const [mode, setMode] = useState('xml') // 'xml' | 'manual' | 'list'
+    // Incrementado quando uma entrada é gravada com sucesso (XML ou manual).
+    // O StockEntriesList observa isso pra refazer o fetch sem depender só
+    // do remount do componente. Sem isso, criar nota e voltar pra aba
+    // "Histórico" às vezes mostrava lista cacheada/em loading.
+    const [refreshTrigger, setRefreshTrigger] = useState(0)
+
+    const handleEntryCreated = () => {
+        setRefreshTrigger(t => t + 1)
+        setMode('list')
+    }
 
     return (
         <div className="space-y-6">
@@ -58,9 +68,9 @@ export default function ImportPage() {
                 )}
             </div>
 
-            {mode === 'xml' && <StockImport />}
-            {mode === 'manual' && <ManualStockEntry />}
-            {mode === 'list' && <StockEntriesList />}
+            {mode === 'xml' && <StockImport onEntryCreated={handleEntryCreated} />}
+            {mode === 'manual' && <ManualStockEntry onEntryCreated={handleEntryCreated} />}
+            {mode === 'list' && <StockEntriesList refreshTrigger={refreshTrigger} />}
         </div>
     )
 }

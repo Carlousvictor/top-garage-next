@@ -27,7 +27,10 @@ const selectStyles = {
 // Entrada manual de Nota Fiscal — usada quando não há XML disponível.
 // Persiste nas mesmas tabelas que o fluxo de XML: suppliers, products, stock_entries, transactions.
 // O `xml_key` da stock_entry fica null (chave que distingue manual vs XML em relatórios futuros).
-export default function ManualStockEntry() {
+// `onEntryCreated` é opcional — chamado após gravar com sucesso pra que o pai
+// (ImportPage) possa atualizar o histórico e trocar a aba. Default no-op
+// preserva uso isolado do componente.
+export default function ManualStockEntry({ onEntryCreated }) {
     const supabase = createClient()
     const { tenantId } = useAuth()
 
@@ -287,6 +290,9 @@ export default function ManualStockEntry() {
             setItems([])
             setInstallments([])
             setPaymentMode('upfront')
+
+            // Sinaliza pro pai (ImportPage) atualizar histórico e trocar aba.
+            if (typeof onEntryCreated === 'function') onEntryCreated()
         } catch (e) {
             addLog(`Falha ao gravar: ${e.message}`, 'error')
         } finally {

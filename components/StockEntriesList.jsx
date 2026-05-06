@@ -4,9 +4,12 @@ import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
-import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck } from 'lucide-react'
+import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck, RefreshCw } from 'lucide-react'
 
-export default function StockEntriesList() {
+// `refreshTrigger` é opcional: o pai pode incrementá-lo após salvar uma nota
+// pra forçar refetch sem precisar remontar o componente. Default 0 mantém
+// comportamento antigo (fetch só na montagem / mudança de tenant).
+export default function StockEntriesList({ refreshTrigger = 0 }) {
     const supabase = createClient()
     const { tenantId } = useAuth()
     const toast = useToast()
@@ -14,13 +17,19 @@ export default function StockEntriesList() {
 
     const [entries, setEntries] = useState([])
     const [loading, setLoading] = useState(true)
+    const [loadError, setLoadError] = useState(null)
     const [expandedEntry, setExpandedEntry] = useState(null)
     const [entryItems, setEntryItems] = useState({}) // { entryId: [items] }
 
     const fetchEntries = async () => {
         setLoading(true)
+        setLoadError(null)
+        // Timeout de 20s pra garantir que o spinner não fica eterno se a rede
+        // travar ou a query do Supabase nunca responder. Sem isso, qualquer
+        // hang silencioso mantinha "Carregando histórico de notas..." infinito.
+        let timeoutId
         try {
-            const { data, error } = await supabase
+            const queryPromise = supabase
                 .from('stock_entries')
                 .select(`
                     *,
@@ -28,19 +37,33 @@ export default function StockEntriesList() {
                 `)
                 .eq('tenant_id', tenantId)
                 .order('created_at', { ascending: false })
-            
+
+            const timeoutPromise = new Promise((_, reject) => {
+                timeoutId = setTimeout(
+                    () => reject(new Error('Tempo limite (20s) ao carregar histórico. Verifique sua conexão.')),
+                    20000
+                )
+            })
+
+            const result = await Promise.race([queryPromise, timeoutPromise])
+            const { data, error } = result || {}
             if (error) throw error
             setEntries(data || [])
         } catch (error) {
-            toast.error('Erro ao carregar entradas: ' + error.message)
+            console.error('[StockEntriesList] fetchEntries falhou:', error)
+            const msg = error?.message || 'Erro desconhecido ao carregar histórico.'
+            setLoadError(msg)
+            toast.error('Erro ao carregar entradas: ' + msg)
         } finally {
+            if (timeoutId) clearTimeout(timeoutId)
             setLoading(false)
         }
     }
 
     useEffect(() => {
         if (tenantId) fetchEntries()
-    }, [tenantId])
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tenantId, refreshTrigger])
 
     const toggleExpand = async (entryId) => {
         if (expandedEntry === entryId) {
@@ -137,13 +160,44 @@ export default function StockEntriesList() {
         }
     }
 
-    if (loading && entries.length === 0) {
-        return <div className="text-center py-10 text-gray-500">Carregando histórico de notas...</div>
-    }
-
     return (
         <div className="space-y-4">
-            {entries.length === 0 ? (
+            <div className="flex items-center justify-between">
+                <p className="text-xs uppercase tracking-widest text-gray-500 font-bold">
+                    {entries.length > 0 ? `${entries.length} nota(s) registrada(s)` : 'Histórico'}
+                </p>
+                <button
+                    type="button"
+                    onClick={fetchEntries}
+                    disabled={loading}
+                    className="text-xs text-gray-400 hover:text-white flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-neutral-800 hover:border-neutral-700 transition disabled:opacity-50"
+                    title="Recarregar histórico"
+                >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    {loading ? 'Carregando...' : 'Atualizar'}
+                </button>
+            </div>
+
+            {loadError && (
+                <div className="bg-red-900/30 border border-red-800/60 rounded-2xl p-4 flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                        <p className="text-sm font-bold text-red-200">Falha ao carregar histórico</p>
+                        <p className="text-xs text-red-300/80 mt-1">{loadError}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={fetchEntries}
+                        className="text-xs bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 rounded-lg font-medium whitespace-nowrap"
+                    >
+                        Tentar novamente
+                    </button>
+                </div>
+            )}
+
+            {loading && entries.length === 0 ? (
+                <div className="text-center py-10 text-gray-500">Carregando histórico de notas...</div>
+            ) : entries.length === 0 ? (
                 <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-10 text-center text-gray-500">
                     <AlertCircle className="w-10 h-10 mx-auto mb-3 opacity-20" />
                     <p>Nenhuma nota fiscal encontrada no histórico.</p>
