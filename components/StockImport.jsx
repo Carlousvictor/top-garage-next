@@ -49,6 +49,8 @@ export default function StockImport({ onEntryCreated }) {
         }));
     };
 
+    // Mantido pra compatibilidade caso outro caller use (não chamado mais
+    // pelo fluxo principal; substituído por fetchPreviewMeta abaixo).
     const checkDuplicateImport = async (xmlKey) => {
         const { data } = await supabase
             .from('stock_entries')
@@ -57,6 +59,33 @@ export default function StockImport({ onEntryCreated }) {
             .eq('tenant_id', tenantId)
             .maybeSingle();
         return { isDuplicate: !!data, importedAt: data?.created_at || null };
+    };
+
+    // Preview server-side (dup-check + EAN match) com timeout. Resolve o bug
+    // de "trava em Lendo arquivo... e só funciona depois de relogar": antes,
+    // os supabase.from(...).select(...) eram disparados direto do browser e,
+    // quando o auth-token precisava refresh, a Promise não settlava — UI
+    // ficava em loading pra sempre. Server-side usa cookie httpOnly resolvido
+    // pelo helper, sem dependência de estado client-side.
+    const fetchPreviewMeta = async ({ xmlKey, eans }) => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        try {
+            const res = await fetch('/api/stock/import/preview', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                signal: controller.signal,
+                body: JSON.stringify({ xmlKey, eans })
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(json.error || `Erro HTTP ${res.status}`);
+            }
+            return json;
+        } finally {
+            clearTimeout(timeoutId);
+        }
     };
 
     const handleFileUpload = async (event) => {
@@ -102,15 +131,6 @@ export default function StockImport({ onEntryCreated }) {
             const dets = Array.isArray(infNFe.det) ? infNFe.det : [infNFe.det];
             const xmlKey = infNFe["@_Id"];
 
-            // Idempotency: bloquear reimport do mesmo XML
-            const { isDuplicate, importedAt } = await checkDuplicateImport(xmlKey);
-            if (isDuplicate) {
-                const dateStr = importedAt ? new Date(importedAt).toLocaleDateString() : 'data desconhecida';
-                addLog(`Esta NFe já foi importada em ${dateStr}. Importação abortada.`, 'error');
-                setLoading(false);
-                return;
-            }
-
             // Extract items for preview
             const items = dets.map((item, index) => {
                 const prod = item.prod;
@@ -132,24 +152,41 @@ export default function StockImport({ onEntryCreated }) {
                 };
             });
 
-            // Lookup paralelo por EAN pra pintar status no preview.
-            // Match por SKU+supplier_id continua no confirmImport (depende do supplier resolvido).
-            const eanLookups = await Promise.all(items.map(async (it) => {
-                if (!it.ean) return null;
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, name')
-                    .eq('tenant_id', tenantId)
-                    .eq('ean', it.ean)
-                    .maybeSingle();
-                return data;
-            }));
-            eanLookups.forEach((match, idx) => {
-                if (match) {
-                    items[idx].matchStatus = 'matched_ean';
-                    items[idx].matchedProductName = match.name;
+            // Server-side preview: dup-check + EAN match com timeout 30s.
+            // Substitui as queries client-side que travavam em token stale.
+            let previewMeta;
+            try {
+                previewMeta = await fetchPreviewMeta({
+                    xmlKey,
+                    eans: items.map(i => i.ean).filter(Boolean)
+                });
+            } catch (err) {
+                const msg = err.name === 'AbortError'
+                    ? 'A validação demorou demais (>30s). Tente novamente — se persistir, recarregue a página.'
+                    : err.message;
+                addLog(`Erro ao validar XML: ${msg}`, 'error');
+                setLoading(false);
+                return;
+            }
+
+            // Idempotency: bloquear reimport do mesmo XML
+            if (previewMeta.isDuplicate) {
+                const dateStr = previewMeta.importedAt
+                    ? new Date(previewMeta.importedAt).toLocaleDateString()
+                    : 'data desconhecida';
+                addLog(`Esta NFe já foi importada em ${dateStr}. Importação abortada.`, 'error');
+                setLoading(false);
+                return;
+            }
+
+            // Pinta status no preview a partir do mapa de matches retornado pelo server.
+            const matchesByEan = previewMeta.matchesByEan || {};
+            items.forEach((it) => {
+                if (it.ean && matchesByEan[it.ean]) {
+                    it.matchStatus = 'matched_ean';
+                    it.matchedProductName = matchesByEan[it.ean].name;
                 } else {
-                    items[idx].matchStatus = items[idx].ean ? 'new' : 'unknown';
+                    it.matchStatus = it.ean ? 'new' : 'unknown';
                 }
             });
 

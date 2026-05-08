@@ -24,38 +24,34 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
     const fetchEntries = async () => {
         setLoading(true)
         setLoadError(null)
-        // Timeout de 20s pra garantir que o spinner não fica eterno se a rede
-        // travar ou a query do Supabase nunca responder. Sem isso, qualquer
-        // hang silencioso mantinha "Carregando histórico de notas..." infinito.
-        let timeoutId
+        // Server-side via /api/stock/entries: cookie httpOnly garante auth
+        // fresh, sem o bug de "lista vazia/cacheada até relogar" causado por
+        // token stale do supabase-js client-side. AbortController preserva o
+        // timeout de 20s — qualquer hang vira erro visível, não spinner eterno.
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 20000)
         try {
-            const queryPromise = supabase
-                .from('stock_entries')
-                .select(`
-                    *,
-                    suppliers(name)
-                `)
-                .eq('tenant_id', tenantId)
-                .order('created_at', { ascending: false })
-
-            const timeoutPromise = new Promise((_, reject) => {
-                timeoutId = setTimeout(
-                    () => reject(new Error('Tempo limite (20s) ao carregar histórico. Verifique sua conexão.')),
-                    20000
-                )
+            const res = await fetch('/api/stock/entries', {
+                method: 'GET',
+                credentials: 'include',
+                signal: controller.signal,
+                // Evita cache do navegador/Next entre invocações sucessivas.
+                cache: 'no-store',
             })
-
-            const result = await Promise.race([queryPromise, timeoutPromise])
-            const { data, error } = result || {}
-            if (error) throw error
-            setEntries(data || [])
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                throw new Error(json.error || `Erro HTTP ${res.status}`)
+            }
+            setEntries(json.entries || [])
         } catch (error) {
             console.error('[StockEntriesList] fetchEntries falhou:', error)
-            const msg = error?.message || 'Erro desconhecido ao carregar histórico.'
+            const msg = error?.name === 'AbortError'
+                ? 'Tempo limite (20s) ao carregar histórico. Verifique sua conexão.'
+                : (error?.message || 'Erro desconhecido ao carregar histórico.')
             setLoadError(msg)
             toast.error('Erro ao carregar entradas: ' + msg)
         } finally {
-            if (timeoutId) clearTimeout(timeoutId)
+            clearTimeout(timeoutId)
             setLoading(false)
         }
     }
