@@ -8,11 +8,12 @@ import { useConfirm } from '../context/ConfirmContext'
 import CreatableSelect from 'react-select/creatable'
 import Select from 'react-select'
 import QuickProductModal from './QuickProductModal'
+import PDVSalePrint from './PDVSalePrint'
 
 export default function POSForm({ initialClients = [], initialProducts = [] }) {
     const supabase = createClient()
     const router = useRouter()
-    const { tenantId } = useAuth()
+    const { tenantId, tenant } = useAuth()
     const toast = useToast()
     const confirm = useConfirm()
 
@@ -283,6 +284,15 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
         }
     }
 
+    // Imprime o estado atual do carrinho — preview/recibo da venda em curso.
+    // Mesmo padrão do ServiceOrderForm: window.print() dispara o componente
+    // hidden print:flex. Não depende de checkout — útil pra orçamento ou
+    // recibo de venda finalizada (operador clica antes de limpar o carrinho).
+    const handlePrint = () => {
+        if (cart.length === 0) return
+        window.print()
+    }
+
     // Tema escuro do react-select alinhado com o resto do app
     const selectStyles = {
         control: (base, state) => ({
@@ -308,7 +318,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
 
     return (
         <>
-        <div className="bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 flex flex-col md:flex-row gap-6">
+        <div className="bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 flex flex-col md:flex-row gap-6 print:hidden">
             {/* Products Selection */}
             <div className="flex-1">
                 <h2 className="text-2xl font-bold text-white mb-4">Ponto de Venda (PDV)</h2>
@@ -639,9 +649,36 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                     >
                         DEIXAR EM ABERTO
                     </button>
+
+                    <button
+                        type="button"
+                        onClick={handlePrint}
+                        disabled={cart.length === 0}
+                        className="w-full mt-3 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-40 text-white py-2.5 rounded-lg font-bold text-sm transition-colors"
+                        title="Imprimir recibo da venda atual (carrinho)."
+                    >
+                        Imprimir / PDF
+                    </button>
                 </div>
             </div>
         </div>
+
+        {/* Componente oculto na tela; aparece só na impressão (print:flex).
+            Mesmo padrão do ServiceOrderPrint — recebe estado atual do carrinho. */}
+        <PDVSalePrint
+            items={cart}
+            clientLabel={resolveClientLabel()}
+            paymentMethod={paymentMethod}
+            splitPayment={splitPayment}
+            payment1={splitPayment ? { method: payment1Method, amount: parseFloat(payment1Amount) || 0 } : null}
+            payment2={splitPayment ? { method: payment2Method, amount: parseFloat(payment2Amount) || 0 } : null}
+            subtotal={calculateSubtotal()}
+            discountPercent={getDiscountPercent()}
+            discountAmount={calculateDiscountAmount()}
+            total={calculateTotal()}
+            serviceDate={serviceDate}
+            tenant={tenant}
+        />
 
         <QuickProductModal
             isOpen={quickProductOpen}

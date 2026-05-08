@@ -40,7 +40,16 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
     // Match por CNPJ (não por nome) — nomes mudam, CNPJ é estável.
     // Fallback seguro: tenant indefinido → cabeçalho genérico, nunca vaza
     // dados do Top Garage pra outro tenant.
-    const isTopGarage = onlyDigits(tenant?.document) === TOP_GARAGE_CNPJ_DIGITS
+    const isTopGarageByDoc = onlyDigits(tenant?.document) === TOP_GARAGE_CNPJ_DIGITS
+    // Fallback por nome — cobre tenants reais do Top Garage cujo `document`
+    // ficou em branco no banco (ex: admin@topgarage). Sem isso, a logo não
+    // aparece na impressão. Match insensitive a caixa/espaços.
+    const isTopGarageByName = ((tenant?.name || '').trim().toUpperCase()).includes('TOP GARAGE')
+    const isTopGarage = isTopGarageByDoc || isTopGarageByName
+    // Logo customizada do tenant (qualquer tenant que não seja Top Garage):
+    // se `tenants.logo_url` estiver preenchido, usa na impressão. Mantém o
+    // fallback "garaje.io" quando não há logo cadastrada.
+    const customLogoUrl = !isTopGarage && tenant?.logo_url ? tenant.logo_url : null
 
     const formatDate = (dateString) => {
         if (!dateString) return ''
@@ -98,6 +107,8 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                     <div className="flex flex-col justify-center">
                         {isTopGarage ? (
                             <img src="/logo.png" alt="Top Garage" className="h-32 object-contain mb-2 self-start" />
+                        ) : customLogoUrl ? (
+                            <img src={customLogoUrl} alt={tenant?.name || 'Logo'} className="h-32 object-contain mb-2 self-start" />
                         ) : (
                             <span className="text-3xl font-black text-gray-700 tracking-tight self-start mb-2">garaje.io</span>
                         )}
