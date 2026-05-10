@@ -24,18 +24,17 @@ const selectStyles = {
     indicatorSeparator: () => ({ display: 'none' })
 }
 
-// Entrada manual de Nota Fiscal — usada quando não há XML disponível.
-// Persiste nas mesmas tabelas que o fluxo de XML: suppliers, products, stock_entries, transactions.
-// O `xml_key` da stock_entry fica null (chave que distingue manual vs XML em relatórios futuros).
-// `onEntryCreated` é opcional — chamado após gravar com sucesso pra que o pai
-// (ImportPage) possa atualizar o histórico e trocar a aba. Default no-op
-// preserva uso isolado do componente.
+const fmt = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+// Entrada manual de NF. Toda a persistência roda via /api/stock/manual-entry
+// pra evitar AbortError de chamadas client-side da supabase quando a sessão
+// refresha durante o fluxo. Mesmo padrão do fluxo XML.
 export default function ManualStockEntry({ onEntryCreated }) {
     const supabase = createClient()
     const { tenantId } = useAuth()
 
     const [suppliers, setSuppliers] = useState([])
-    const [supplierOption, setSupplierOption] = useState(null) // {value, label, isNew?, cnpj?}
+    const [supplierOption, setSupplierOption] = useState(null)
     const [supplierCnpjForNew, setSupplierCnpjForNew] = useState('')
 
     const [invoiceNumber, setInvoiceNumber] = useState('')
@@ -44,7 +43,12 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
     const [items, setItems] = useState([])
 
-    // Pagamento: 'upfront' (à vista) | 'installments' (a prazo)
+    // Frete + desconto
+    const [freightAmount, setFreightAmount] = useState(0)
+    const [discountMode, setDiscountMode] = useState('total') // 'total' | 'per_item'
+    const [discountAmount, setDiscountAmount] = useState(0)   // só usado em modo 'total'
+
+    // Pagamento
     const [paymentMode, setPaymentMode] = useState('upfront')
     const [upfrontMethod, setUpfrontMethod] = useState('Dinheiro')
     const [installments, setInstallments] = useState([])
@@ -85,7 +89,8 @@ export default function ManualStockEntry({ onEntryCreated }) {
             quantity: 1,
             cost_price: 0,
             margin: defaultMargin,
-            selling_price: 0
+            selling_price: 0,
+            discount_amount: 0
         }])
     }
 
@@ -93,7 +98,6 @@ export default function ManualStockEntry({ onEntryCreated }) {
         setItems(prev => prev.map(it => {
             if (it.id !== id) return it
             const next = { ...it, [field]: value }
-            // Recalcula selling_price quando custo ou margem muda
             if (field === 'cost_price' || field === 'margin') {
                 const cost = parseFloat(field === 'cost_price' ? value : next.cost_price) || 0
                 const m = parseFloat(field === 'margin' ? value : next.margin) || 0
@@ -107,7 +111,19 @@ export default function ManualStockEntry({ onEntryCreated }) {
         setItems(prev => prev.filter(it => it.id !== id))
     }
 
-    const total = items.reduce((acc, it) => acc + (parseFloat(it.cost_price) || 0) * (parseFloat(it.quantity) || 0), 0)
+    // Subtotal bruto (sem frete/desconto)
+    const subtotalBruto = items.reduce(
+        (acc, it) => acc + (parseFloat(it.cost_price) || 0) * (parseFloat(it.quantity) || 0),
+        0
+    )
+
+    const totalDiscountApplied = discountMode === 'total'
+        ? (parseFloat(discountAmount) || 0)
+        : items.reduce((acc, it) => acc + (parseFloat(it.discount_amount) || 0), 0)
+
+    const freightApplied = parseFloat(freightAmount) || 0
+
+    const total = subtotalBruto + freightApplied - totalDiscountApplied
 
     const handleAddInstallment = () => {
         setInstallments(prev => [...prev, {
@@ -134,7 +150,20 @@ export default function ManualStockEntry({ onEntryCreated }) {
             if (!it.name.trim()) return 'Todos os itens precisam de descrição.'
             if (!it.quantity || it.quantity <= 0) return `Quantidade inválida em "${it.name}".`
             if (!it.cost_price || it.cost_price <= 0) return `Preço de custo inválido em "${it.name}".`
+            if (discountMode === 'per_item') {
+                const d = parseFloat(it.discount_amount) || 0
+                const sub = (parseFloat(it.cost_price) || 0) * (parseFloat(it.quantity) || 0)
+                if (d < 0) return `Desconto negativo em "${it.name}".`
+                if (d > sub) return `Desconto maior que subtotal em "${it.name}".`
+            }
         }
+        if (freightApplied < 0) return 'Frete não pode ser negativo.'
+        if (discountMode === 'total') {
+            const d = parseFloat(discountAmount) || 0
+            if (d < 0) return 'Desconto não pode ser negativo.'
+            if (d > subtotalBruto) return 'Desconto total maior que subtotal da NF.'
+        }
+        if (total < 0) return 'Total da NF ficou negativo.'
         if (paymentMode === 'installments') {
             if (installments.length === 0) return 'Adicione ao menos uma parcela.'
             for (const p of installments) {
@@ -142,7 +171,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 if (!p.amount || p.amount <= 0) return 'Valor de parcela inválido.'
             }
             const diff = Math.abs(installmentsTotal - total)
-            if (diff > 0.05) return `Soma das parcelas (R$ ${installmentsTotal.toFixed(2)}) não bate com total da NF (R$ ${total.toFixed(2)}).`
+            if (diff > 0.05) return `Soma das parcelas (${fmt(installmentsTotal)}) não bate com total da NF (${fmt(total)}).`
         }
         return null
     }
@@ -154,144 +183,60 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
         setSubmitting(true)
         setLogs([])
+        addLog('Enviando NF para o servidor...')
+
+        const payload = {
+            supplier: supplierOption.isNew
+                ? { isNew: true, name: supplierOption.label, cnpj: supplierCnpjForNew.trim() }
+                : { isNew: false, id: supplierOption.value, name: supplierOption.label },
+            invoiceNumber: invoiceNumber.trim(),
+            emissionDate,
+            items: items.map(it => ({
+                name: it.name.trim(),
+                sku: it.sku || '',
+                ean: it.ean || '',
+                quantity: parseFloat(it.quantity) || 0,
+                cost_price: parseFloat(it.cost_price) || 0,
+                margin: parseFloat(it.margin) || 0,
+                selling_price: parseFloat(it.selling_price) || 0,
+                discount_amount: discountMode === 'per_item' ? (parseFloat(it.discount_amount) || 0) : 0
+            })),
+            freightAmount: freightApplied,
+            discountMode,
+            discountAmount: discountMode === 'total' ? (parseFloat(discountAmount) || 0) : 0,
+            paymentMode,
+            upfrontMethod,
+            installments: paymentMode === 'installments'
+                ? installments.map(p => ({
+                    dueDate: p.dueDate,
+                    amount: parseFloat(p.amount) || 0,
+                    paymentMethod: p.paymentMethod
+                }))
+                : []
+        }
 
         try {
-            // 1. Resolver fornecedor (existente ou criar)
-            let supplierId
-            if (supplierOption.isNew) {
-                addLog(`Criando fornecedor "${supplierOption.label}"...`)
-                const { data, error } = await supabase
-                    .from('suppliers')
-                    .insert([{ tenant_id: tenantId, name: supplierOption.label, cnpj: supplierCnpjForNew.trim() }])
-                    .select()
-                    .single()
-                if (error) throw new Error(`Erro criar fornecedor: ${error.message}`)
-                supplierId = data.id
-            } else {
-                supplierId = supplierOption.value
-            }
+            const res = await fetch('/api/stock/manual-entry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`)
 
-            // 2. Upsert produtos por (sku + supplier) — mesma estratégia do XML
-            //    Sem EAN porque o usuário pode não ter, e match por nome é arriscado.
-            const stockEntryItemsRows = []
+            addLog(`NF ${invoiceNumber} lançada. ${data.itemCount} item(ns), ${data.transactionCount} lançamento(s).`, 'success')
 
-            for (const it of items) {
-                let existingProd = null
-                if (it.sku && it.sku.trim()) {
-                    const { data } = await supabase
-                        .from('products')
-                        .select('id, quantity')
-                        .eq('tenant_id', tenantId)
-                        .eq('sku', it.sku.trim())
-                        .eq('supplier_id', supplierId)
-                        .maybeSingle()
-                    existingProd = data
-                }
-
-                let finalProductId
-                if (existingProd) {
-                    await supabase.from('products').update({
-                        quantity: Number(existingProd.quantity || 0) + parseFloat(it.quantity),
-                        cost_price: parseFloat(it.cost_price),
-                        selling_price: parseFloat(it.selling_price),
-                        profit_margin_percent: parseFloat(it.margin) || 0,
-                        supplier_id: supplierId
-                    }).eq('id', existingProd.id)
-                    finalProductId = existingProd.id
-                } else {
-                    const { data: newProd, error: insErr } = await supabase.from('products').insert([{
-                        tenant_id: tenantId,
-                        sku: it.sku?.trim() || null,
-                        ean: it.ean?.trim() || null,
-                        name: it.name.trim(),
-                        cost_price: parseFloat(it.cost_price),
-                        selling_price: parseFloat(it.selling_price),
-                        quantity: parseFloat(it.quantity),
-                        profit_margin_percent: parseFloat(it.margin) || 0,
-                        supplier_id: supplierId
-                    }]).select('id').single()
-                    if (insErr) throw insErr
-                    finalProductId = newProd.id
-                }
-
-                stockEntryItemsRows.push({
-                    tenant_id: tenantId,
-                    product_id: finalProductId,
-                    sku: it.sku?.trim() || null,
-                    ean: it.ean?.trim() || null,
-                    name: it.name.trim(),
-                    quantity: parseFloat(it.quantity),
-                    cost_price: parseFloat(it.cost_price),
-                    selling_price: parseFloat(it.selling_price)
-                })
-            }
-
-            // 3. Stock entry — xml_key NULL marca origem manual
-            const { data: entry, error: entryErr } = await supabase
-                .from('stock_entries')
-                .insert([{
-                    tenant_id: tenantId,
-                    supplier_id: supplierId,
-                    xml_key: null,
-                    total_value: total
-                }])
-                .select()
-                .single()
-            if (entryErr) throw entryErr
-
-            // 4. Stock Entry Items
-            const finalEntryItems = stockEntryItemsRows.map(row => ({
-                ...row,
-                stock_entry_id: entry.id
-            }))
-            const { error: itemsError } = await supabase.from('stock_entry_items').insert(finalEntryItems)
-            if (itemsError) throw itemsError
-
-            // 5. Transactions (mesmo padrão do XML)
-            const nowIso = new Date().toISOString()
-            const supplierLabel = supplierOption.isNew ? supplierOption.label : (suppliers.find(s => s.id === supplierId)?.name || 'Fornecedor')
-            let txRows
-            if (paymentMode === 'installments') {
-                txRows = installments.map((p, idx) => ({
-                    tenant_id: tenantId,
-                    description: `NF ${invoiceNumber} - ${supplierLabel} (${idx + 1}/${installments.length})`,
-                    type: 'expense',
-                    category: 'Fornecedores',
-                    amount: parseFloat(p.amount),
-                    due_date: p.dueDate,
-                    status: 'pending',
-                    payment_method: p.paymentMethod,
-                    related_stock_entry_id: entry.id,
-                    date: nowIso
-                }))
-            } else {
-                txRows = [{
-                    tenant_id: tenantId,
-                    description: `NF ${invoiceNumber} - ${supplierLabel} (à vista)`,
-                    type: 'expense',
-                    category: 'Fornecedores',
-                    amount: total,
-                    due_date: null,
-                    status: 'paid',
-                    payment_method: upfrontMethod,
-                    related_stock_entry_id: entry.id,
-                    date: nowIso
-                }]
-            }
-            const { error: txErr } = await supabase.from('transactions').insert(txRows)
-            if (txErr) throw txErr
-
-            addLog(`NF ${invoiceNumber} lançada com sucesso. ${items.length} item(ns), ${txRows.length} lançamento(s) financeiro(s).`, 'success')
-
-            // Reset form
+            // Reset
             setSupplierOption(null)
             setSupplierCnpjForNew('')
             setInvoiceNumber('')
             setItems([])
             setInstallments([])
             setPaymentMode('upfront')
+            setFreightAmount(0)
+            setDiscountAmount(0)
+            setDiscountMode('total')
 
-            // Sinaliza pro pai (ImportPage) atualizar histórico e trocar aba.
             if (typeof onEntryCreated === 'function') onEntryCreated()
         } catch (e) {
             addLog(`Falha ao gravar: ${e.message}`, 'error')
@@ -373,6 +318,59 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 </div>
             </div>
 
+            {/* Frete e Desconto */}
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 space-y-4">
+                <h3 className="text-sm uppercase tracking-wide text-gray-400 font-bold">Frete e Desconto</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">Frete (R$)</label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={freightAmount}
+                            onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                            className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
+                            placeholder="0,00"
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">Rateado proporcionalmente nos custos dos itens.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">Modo de desconto</label>
+                        <select
+                            value={discountMode}
+                            onChange={(e) => setDiscountMode(e.target.value)}
+                            className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
+                        >
+                            <option value="total">Desconto total (rateado)</option>
+                            <option value="per_item">Desconto por item</option>
+                        </select>
+                        <p className="text-[11px] text-gray-500 mt-1">
+                            {discountMode === 'total'
+                                ? 'Aplicado sobre o total e rateado proporcionalmente.'
+                                : 'Informe valor por linha na tabela abaixo.'}
+                        </p>
+                    </div>
+
+                    {discountMode === 'total' && (
+                        <div>
+                            <label className="block text-sm text-gray-300 mb-1">Desconto total (R$)</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={discountAmount}
+                                onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                                className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
+                                placeholder="0,00"
+                            />
+                        </div>
+                    )}
+                </div>
+            </div>
+
             {/* Itens */}
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
                 <div className="flex items-center justify-between mb-4">
@@ -388,7 +386,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
                 {items.length === 0 ? (
                     <div className="text-center py-8 text-gray-500 text-sm">
-                        Nenhum item ainda. Clique em "Adicionar item".
+                        Nenhum item ainda. Clique em &quot;Adicionar item&quot;.
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
@@ -401,87 +399,125 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                     <th className="px-2 py-2 text-right w-28">Custo R$ *</th>
                                     <th className="px-2 py-2 text-right w-20">Margem%</th>
                                     <th className="px-2 py-2 text-right w-28">Venda R$</th>
+                                    {discountMode === 'per_item' && (
+                                        <th className="px-2 py-2 text-right w-28">Desc. R$</th>
+                                    )}
                                     <th className="px-2 py-2 text-right w-28">Subtotal</th>
                                     <th className="w-10"></th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {items.map(it => (
-                                    <tr key={it.id} className="border-b border-neutral-800/60">
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="text"
-                                                value={it.name}
-                                                onChange={(e) => handleUpdateItem(it.id, 'name', e.target.value)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white"
-                                                placeholder="Nome do produto"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="text"
-                                                value={it.sku}
-                                                onChange={(e) => handleUpdateItem(it.id, 'sku', e.target.value)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white"
-                                                placeholder="—"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={it.quantity}
-                                                onChange={(e) => handleUpdateItem(it.id, 'quantity', parseFloat(e.target.value) || 0)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={it.cost_price}
-                                                onChange={(e) => handleUpdateItem(it.id, 'cost_price', parseFloat(e.target.value) || 0)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="number"
-                                                step="0.1"
-                                                value={it.margin}
-                                                onChange={(e) => handleUpdateItem(it.id, 'margin', parseFloat(e.target.value) || 0)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2">
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={it.selling_price}
-                                                onChange={(e) => handleUpdateItem(it.id, 'selling_price', parseFloat(e.target.value) || 0)}
-                                                className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
-                                            />
-                                        </td>
-                                        <td className="px-2 py-2 text-right text-white font-medium">
-                                            {((parseFloat(it.cost_price) || 0) * (parseFloat(it.quantity) || 0)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                        </td>
-                                        <td className="px-2 py-2 text-right">
-                                            <button
-                                                type="button"
-                                                onClick={() => handleRemoveItem(it.id)}
-                                                className="text-red-500 hover:text-red-400"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </td>
-                                    </tr>
-                                ))}
+                                {items.map(it => {
+                                    const sub = (parseFloat(it.cost_price) || 0) * (parseFloat(it.quantity) || 0)
+                                    const lineNet = discountMode === 'per_item'
+                                        ? sub - (parseFloat(it.discount_amount) || 0)
+                                        : sub
+                                    return (
+                                        <tr key={it.id} className="border-b border-neutral-800/60">
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="text"
+                                                    value={it.name}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'name', e.target.value)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white"
+                                                    placeholder="Nome do produto"
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="text"
+                                                    value={it.sku}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'sku', e.target.value)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white"
+                                                    placeholder="—"
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={it.quantity}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={it.cost_price}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'cost_price', parseFloat(e.target.value) || 0)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="number"
+                                                    step="0.1"
+                                                    value={it.margin}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'margin', parseFloat(e.target.value) || 0)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={it.selling_price}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'selling_price', parseFloat(e.target.value) || 0)}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                />
+                                            </td>
+                                            {discountMode === 'per_item' && (
+                                                <td className="px-2 py-2">
+                                                    <input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={it.discount_amount || 0}
+                                                        onChange={(e) => handleUpdateItem(it.id, 'discount_amount', parseFloat(e.target.value) || 0)}
+                                                        className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                    />
+                                                </td>
+                                            )}
+                                            <td className="px-2 py-2 text-right text-white font-medium">
+                                                {fmt(lineNet)}
+                                            </td>
+                                            <td className="px-2 py-2 text-right">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveItem(it.id)}
+                                                    className="text-red-500 hover:text-red-400"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
                             </tbody>
-                            <tfoot>
+                            <tfoot className="text-sm">
                                 <tr>
-                                    <td colSpan={6} className="px-2 py-3 text-right text-gray-400 uppercase text-xs font-bold">Total da NF</td>
+                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Subtotal</td>
+                                    <td className="px-2 py-1.5 text-right text-white">{fmt(subtotalBruto)}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Frete</td>
+                                    <td className="px-2 py-1.5 text-right text-white">{fmt(freightApplied)}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">
+                                        Desconto {discountMode === 'per_item' ? '(por item)' : '(total)'}
+                                    </td>
+                                    <td className="px-2 py-1.5 text-right text-red-400">- {fmt(totalDiscountApplied)}</td>
+                                    <td></td>
+                                </tr>
+                                <tr className="border-t border-neutral-800">
+                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-3 text-right text-gray-400 uppercase text-xs font-bold">Total da NF</td>
                                     <td className="px-2 py-3 text-right text-white font-black text-lg">
-                                        {total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        {fmt(total)}
                                     </td>
                                     <td></td>
                                 </tr>
@@ -540,7 +576,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                     <div className="space-y-2">
                         <div className="flex items-center justify-between">
                             <p className="text-sm text-gray-400">
-                                Soma das parcelas: <span className="text-white font-bold">{installmentsTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                Soma das parcelas: <span className="text-white font-bold">{fmt(installmentsTotal)}</span>
                                 <span className={`ml-2 text-xs ${Math.abs(installmentsTotal - total) > 0.05 ? 'text-red-400' : 'text-emerald-400'}`}>
                                     {Math.abs(installmentsTotal - total) > 0.05 ? '⚠ não bate com a NF' : '✓ bate com a NF'}
                                 </span>

@@ -22,6 +22,13 @@ export default function StockImport({ onEntryCreated }) {
     const [upfrontPaymentMethod, setUpfrontPaymentMethod] = useState('Dinheiro');
     const [editingItemIndex, setEditingItemIndex] = useState(null);
 
+    // Frete + desconto extraídos do XML (vFrete/vDesc do ICMSTot) e editáveis.
+    const [freightAmount, setFreightAmount] = useState(0);
+    const [discountMode, setDiscountMode] = useState('total'); // 'total' | 'per_item'
+    const [discountAmount, setDiscountAmount] = useState(0);   // usado em modo 'total'
+
+    const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
     const addLog = (message, type = 'info') => {
         setLogs(prev => [...prev, { message, type, time: new Date().toLocaleTimeString() }]);
     };
@@ -101,6 +108,9 @@ export default function StockImport({ onEntryCreated }) {
         setInstallments([]);
         setIsPaidUpfront(false);
         setUpfrontPaymentMethod('Dinheiro');
+        setFreightAmount(0);
+        setDiscountAmount(0);
+        setDiscountMode('total');
         addLog(`Lendo arquivo: ${file.name}`);
 
         const reader = new FileReader();
@@ -131,11 +141,12 @@ export default function StockImport({ onEntryCreated }) {
             const dets = Array.isArray(infNFe.det) ? infNFe.det : [infNFe.det];
             const xmlKey = infNFe["@_Id"];
 
-            // Extract items for preview
+            // Extract items for preview (extrai vDesc por item quando presente)
             const items = dets.map((item, index) => {
                 const prod = item.prod;
                 const costPrice = parseFloat(prod.vUnCom);
                 const sellingPrice = costPrice * (1 + (margin / 100));
+                const itemDisc = parseFloat(prod.vDesc || 0) || 0;
 
                 return {
                     id: index, // Temporary ID for list key
@@ -147,10 +158,27 @@ export default function StockImport({ onEntryCreated }) {
                     selling_price: parseFloat(sellingPrice.toFixed(2)),
                     quantity: parseFloat(prod.qCom),
                     unit: prod.uCom,
+                    discount_amount: itemDisc,
                     matchStatus: 'unknown', // 'matched_ean' | 'new' | 'unknown'
                     matchedProductName: null
                 };
             });
+
+            // Frete/desconto totais da NFe (ICMSTot)
+            const icmsTot = infNFe.total?.ICMSTot || {};
+            const xmlFreight = parseFloat(icmsTot.vFrete || 0) || 0;
+            const xmlDiscount = parseFloat(icmsTot.vDesc || 0) || 0;
+            const sumItemDisc = items.reduce((acc, it) => acc + (it.discount_amount || 0), 0);
+
+            setFreightAmount(xmlFreight);
+            // Se vDesc por item bate com o vDesc total, usuário tem desconto distribuído por item.
+            if (sumItemDisc > 0 && Math.abs(sumItemDisc - xmlDiscount) < 0.05) {
+                setDiscountMode('per_item');
+                setDiscountAmount(0);
+            } else {
+                setDiscountMode('total');
+                setDiscountAmount(xmlDiscount);
+            }
 
             // Server-side preview: dup-check + EAN match com timeout 30s.
             // Substitui as queries client-side que travavam em token stale.
@@ -271,7 +299,10 @@ export default function StockImport({ onEntryCreated }) {
                     previewItems,
                     installments,
                     isPaidUpfront,
-                    upfrontPaymentMethod
+                    upfrontPaymentMethod,
+                    freightAmount: parseFloat(freightAmount) || 0,
+                    discountMode,
+                    discountAmount: discountMode === 'total' ? (parseFloat(discountAmount) || 0) : 0
                 })
             });
             clearTimeout(timeoutId);
@@ -374,6 +405,54 @@ export default function StockImport({ onEntryCreated }) {
                         </button>
                     </div>
 
+                    {/* Frete e Desconto — prepopulado a partir do XML, editável */}
+                    <div className="mb-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700">
+                        <h3 className="text-sm uppercase tracking-wide text-gray-400 font-bold mb-3">Frete e Desconto</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Frete (R$)</label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={freightAmount}
+                                    onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                                    className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
+                                />
+                                <p className="text-[11px] text-gray-500 mt-1">Rateado proporcional nos custos.</p>
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Modo de desconto</label>
+                                <select
+                                    value={discountMode}
+                                    onChange={(e) => setDiscountMode(e.target.value)}
+                                    className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
+                                >
+                                    <option value="total">Desconto total (rateado)</option>
+                                    <option value="per_item">Desconto por item</option>
+                                </select>
+                                <p className="text-[11px] text-gray-500 mt-1">
+                                    {discountMode === 'total'
+                                        ? 'Aplicado sobre o total e rateado.'
+                                        : 'Informe valor por linha (col. Desc).'}
+                                </p>
+                            </div>
+                            {discountMode === 'total' && (
+                                <div>
+                                    <label className="block text-xs text-gray-400 mb-1">Desconto total (R$)</label>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={discountAmount}
+                                        onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                                        className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="overflow-x-auto rounded-lg border border-neutral-800">
                         <table className="w-full text-sm text-left text-gray-400">
                             <thead className="text-xs text-gray-200 uppercase bg-black">
@@ -385,6 +464,9 @@ export default function StockImport({ onEntryCreated }) {
                                     <th className="px-4 py-3 w-1/3">Produto</th>
                                     <th className="px-4 py-3">Qtd</th>
                                     <th className="px-4 py-3">Custo (R$)</th>
+                                    {discountMode === 'per_item' && (
+                                        <th className="px-4 py-3">Desc. (R$)</th>
+                                    )}
                                     <th className="px-4 py-3">Margem (%)</th>
                                     <th className="px-4 py-3">Venda (R$)</th>
                                 </tr>
@@ -443,6 +525,18 @@ export default function StockImport({ onEntryCreated }) {
                                                 className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-gray-300"
                                             />
                                         </td>
+                                        {discountMode === 'per_item' && (
+                                            <td className="px-4 py-2">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={item.discount_amount || 0}
+                                                    onChange={(e) => handleItemChange(index, 'discount_amount', e.target.value)}
+                                                    className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-red-300"
+                                                />
+                                            </td>
+                                        )}
                                         <td className="px-4 py-2">
                                             <input
                                                 type="number"
