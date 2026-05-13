@@ -3,7 +3,9 @@ import { useState, useEffect } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import CreatableSelect from 'react-select/creatable'
-import { Plus, Trash2, FileText, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Plus, Trash2, FileText, CheckCircle2, AlertCircle, Link2, Layers, Sparkles } from 'lucide-react'
+import StockItemLinkModal from './StockItemLinkModal'
+import CurrencyInput from './CurrencyInput'
 
 // Estilo dark do react-select alinhado ao resto do app.
 const selectStyles = {
@@ -56,6 +58,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
     const [logs, setLogs] = useState([])
     const [submitting, setSubmitting] = useState(false)
 
+    // Cache de produtos pro auto-match enquanto digita.
+    // Carregado uma vez por sessão do componente.
+    const [productCache, setProductCache] = useState([])
+    const [linkingItemId, setLinkingItemId] = useState(null)
+
     const addLog = (message, type = 'info') => {
         setLogs(prev => [...prev, { message, type, time: new Date().toLocaleTimeString() }])
     }
@@ -67,6 +74,43 @@ export default function ManualStockEntry({ onEntryCreated }) {
         }
         if (tenantId) fetchSuppliers()
     }, [tenantId])
+
+    // Carrega cache de produtos pro auto-match. Server-side via API pra evitar
+    // hang de token stale (mesmo padrão dos outros endpoints do módulo).
+    useEffect(() => {
+        if (!tenantId) return
+        const load = async () => {
+            try {
+                const res = await fetch('/api/stock/products-search?limit=1000', { credentials: 'include' })
+                const json = await res.json().catch(() => ({}))
+                if (res.ok) setProductCache(json.products || [])
+            } catch {
+                /* silencioso — sugestão é opcional */
+            }
+        }
+        load()
+    }, [tenantId])
+
+    // Lookup case-insensitive em name/sku/ean. Retorna no máximo 1 produto
+    // priorizando match exato, depois startsWith, depois includes.
+    const findSuggestion = (q) => {
+        if (!q || q.trim().length < 3) return null
+        const needle = q.trim().toLowerCase()
+        const cache = productCache
+        if (!cache.length) return null
+        let exact = null
+        let starts = null
+        let inc = null
+        for (const p of cache) {
+            const name = (p.name || '').toLowerCase()
+            const sku = (p.sku || '').toLowerCase()
+            const ean = (p.ean || '').toLowerCase()
+            if (name === needle || sku === needle || ean === needle) { exact = p; break }
+            if (!starts && (name.startsWith(needle) || sku.startsWith(needle))) starts = p
+            if (!inc && name.includes(needle)) inc = p
+        }
+        return exact || starts || inc
+    }
 
     const supplierOptions = suppliers.map(s => ({ value: s.id, label: s.name, cnpj: s.cnpj }))
 
@@ -90,7 +134,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
             cost_price: 0,
             margin: defaultMargin,
             selling_price: 0,
-            discount_amount: 0
+            discount_amount: 0,
+            link_product_id: null,
+            link_product_name: null,
+            linked_product_ids: [],
+            suggestion: null  // { id, name, quantity } enquanto o operador não confirma
         }])
     }
 
@@ -103,8 +151,38 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 const m = parseFloat(field === 'margin' ? value : next.margin) || 0
                 next.selling_price = +(cost * (1 + m / 100)).toFixed(2)
             }
+            // Auto-sugestão: roda em mudança de name/sku/ean enquanto não há
+            // vínculo manual (link_product_id). Operador pode ignorar.
+            if ((field === 'name' || field === 'sku' || field === 'ean') && !next.link_product_id) {
+                const q = field === 'name' ? value : (field === 'sku' ? value : value)
+                const suggestion = findSuggestion(q || next.name)
+                next.suggestion = suggestion
+                    ? { id: suggestion.id, name: suggestion.name, sku: suggestion.sku, quantity: suggestion.quantity }
+                    : null
+            }
             return next
         }))
+    }
+
+    const applySuggestion = (id) => {
+        setItems(prev => prev.map(it => {
+            if (it.id !== id) return it
+            if (!it.suggestion) return it
+            return {
+                ...it,
+                link_product_id: it.suggestion.id,
+                link_product_name: it.suggestion.name,
+                suggestion: null
+            }
+        }))
+    }
+
+    const dismissSuggestion = (id) => {
+        setItems(prev => prev.map(it => it.id === id ? { ...it, suggestion: null } : it))
+    }
+
+    const unlinkItem = (id) => {
+        setItems(prev => prev.map(it => it.id === id ? { ...it, link_product_id: null, link_product_name: null } : it))
     }
 
     const handleRemoveItem = (id) => {
@@ -199,7 +277,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 cost_price: parseFloat(it.cost_price) || 0,
                 margin: parseFloat(it.margin) || 0,
                 selling_price: parseFloat(it.selling_price) || 0,
-                discount_amount: discountMode === 'per_item' ? (parseFloat(it.discount_amount) || 0) : 0
+                discount_amount: discountMode === 'per_item' ? (parseFloat(it.discount_amount) || 0) : 0,
+                link_product_id: it.link_product_id || null,
+                linked_product_ids: Array.isArray(it.linked_product_ids) ? it.linked_product_ids : []
             })),
             freightAmount: freightApplied,
             discountMode,
@@ -324,15 +404,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-sm text-gray-300 mb-1">Frete (R$)</label>
-                        <input
-                            type="number"
-                            step="0.01"
-                            min="0"
+                        <label className="block text-sm text-gray-300 mb-1">Frete</label>
+                        <CurrencyInput
                             value={freightAmount}
-                            onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                            onChange={(n) => setFreightAmount(n)}
                             className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
-                            placeholder="0,00"
                         />
                         <p className="text-[11px] text-gray-500 mt-1">Rateado proporcionalmente nos custos dos itens.</p>
                     </div>
@@ -356,15 +432,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
                     {discountMode === 'total' && (
                         <div>
-                            <label className="block text-sm text-gray-300 mb-1">Desconto total (R$)</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                min="0"
+                            <label className="block text-sm text-gray-300 mb-1">Desconto total</label>
+                            <CurrencyInput
                                 value={discountAmount}
-                                onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                                onChange={(n) => setDiscountAmount(n)}
                                 className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
-                                placeholder="0,00"
                             />
                         </div>
                     )}
@@ -412,6 +484,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                     const lineNet = discountMode === 'per_item'
                                         ? sub - (parseFloat(it.discount_amount) || 0)
                                         : sub
+                                    const equivCount = (it.linked_product_ids || []).length
                                     return (
                                         <tr key={it.id} className="border-b border-neutral-800/60">
                                             <td className="px-2 py-2">
@@ -422,6 +495,29 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white"
                                                     placeholder="Nome do produto"
                                                 />
+                                                {it.link_product_id ? (
+                                                    <div className="mt-1 flex items-center gap-1 text-[11px] text-emerald-300">
+                                                        <Link2 className="w-3 h-3" />
+                                                        <span className="truncate">Vinculado: {it.link_product_name || it.link_product_id}</span>
+                                                        <button type="button" onClick={() => unlinkItem(it.id)} className="underline text-emerald-400 hover:text-white">desfazer</button>
+                                                    </div>
+                                                ) : it.suggestion ? (
+                                                    <div className="mt-1 flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded px-2 py-1 text-[11px] text-amber-200">
+                                                        <Sparkles className="w-3 h-3 shrink-0" />
+                                                        <span className="truncate">
+                                                            Parece já cadastrado: <strong>{it.suggestion.name}</strong>
+                                                            {Number.isFinite(Number(it.suggestion.quantity)) ? ` (${it.suggestion.quantity} em estoque)` : ''}
+                                                        </span>
+                                                        <button type="button" onClick={() => applySuggestion(it.id)} className="bg-amber-500/20 hover:bg-amber-500/40 text-amber-100 rounded px-1.5 font-medium">vincular</button>
+                                                        <button type="button" onClick={() => dismissSuggestion(it.id)} className="text-amber-300/70 hover:text-white">×</button>
+                                                    </div>
+                                                ) : null}
+                                                {equivCount > 0 && (
+                                                    <div className="mt-1 flex items-center gap-1 text-[11px] text-purple-300">
+                                                        <Layers className="w-3 h-3" />
+                                                        {equivCount} equivalência(s)
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-2 py-2">
                                                 <input
@@ -442,11 +538,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 />
                                             </td>
                                             <td className="px-2 py-2">
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
+                                                <CurrencyInput
                                                     value={it.cost_price}
-                                                    onChange={(e) => handleUpdateItem(it.id, 'cost_price', parseFloat(e.target.value) || 0)}
+                                                    onChange={(n) => handleUpdateItem(it.id, 'cost_price', n)}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
@@ -460,22 +554,17 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 />
                                             </td>
                                             <td className="px-2 py-2">
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
+                                                <CurrencyInput
                                                     value={it.selling_price}
-                                                    onChange={(e) => handleUpdateItem(it.id, 'selling_price', parseFloat(e.target.value) || 0)}
+                                                    onChange={(n) => handleUpdateItem(it.id, 'selling_price', n)}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
                                             {discountMode === 'per_item' && (
                                                 <td className="px-2 py-2">
-                                                    <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
+                                                    <CurrencyInput
                                                         value={it.discount_amount || 0}
-                                                        onChange={(e) => handleUpdateItem(it.id, 'discount_amount', parseFloat(e.target.value) || 0)}
+                                                        onChange={(n) => handleUpdateItem(it.id, 'discount_amount', n)}
                                                         className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                     />
                                                 </td>
@@ -484,13 +573,24 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 {fmt(lineNet)}
                                             </td>
                                             <td className="px-2 py-2 text-right">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveItem(it.id)}
-                                                    className="text-red-500 hover:text-red-400"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setLinkingItemId(it.id)}
+                                                        className={`p-1 rounded transition ${it.link_product_id || equivCount > 0 ? 'text-emerald-400 hover:text-emerald-300' : 'text-gray-400 hover:text-white'}`}
+                                                        title="Vincular item existente / definir equivalências"
+                                                    >
+                                                        <Link2 className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleRemoveItem(it.id)}
+                                                        className="text-red-500 hover:text-red-400 p-1"
+                                                        title="Remover linha"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     )
@@ -599,12 +699,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                     onChange={(e) => handleUpdateInstallment(p.id, 'dueDate', e.target.value)}
                                     className="col-span-4 bg-neutral-950 border border-neutral-700 rounded p-1.5 text-white text-sm"
                                 />
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Valor"
+                                <CurrencyInput
                                     value={p.amount}
-                                    onChange={(e) => handleUpdateInstallment(p.id, 'amount', parseFloat(e.target.value) || 0)}
+                                    onChange={(n) => handleUpdateInstallment(p.id, 'amount', n)}
                                     className="col-span-3 bg-neutral-950 border border-neutral-700 rounded p-1.5 text-white text-sm text-right"
                                 />
                                 <select
@@ -654,6 +751,30 @@ export default function ManualStockEntry({ onEntryCreated }) {
                     {submitting ? 'Lançando...' : 'Confirmar entrada'}
                 </button>
             </div>
+
+            {linkingItemId !== null && (() => {
+                const it = items.find(x => x.id === linkingItemId)
+                if (!it) return null
+                return (
+                    <StockItemLinkModal
+                        isOpen={true}
+                        onClose={() => setLinkingItemId(null)}
+                        itemLabel={it.name || '(item sem nome)'}
+                        initialLinkProductId={it.link_product_id}
+                        initialLinkProductName={it.link_product_name}
+                        initialEquivIds={it.linked_product_ids || []}
+                        onApply={({ link_product_id, link_product_name, linked_product_ids }) => {
+                            setItems(prev => prev.map(x => x.id === linkingItemId ? {
+                                ...x,
+                                link_product_id: link_product_id || null,
+                                link_product_name: link_product_id ? link_product_name : null,
+                                linked_product_ids: linked_product_ids || [],
+                                suggestion: null
+                            } : x))
+                        }}
+                    />
+                )
+            })()}
         </div>
     )
 }

@@ -50,7 +50,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Payload inválido.' }, { status: 400 })
     }
 
-    const { xmlKey, eans } = body
+    const { xmlKey, eans, skus, supplierCnpj } = body
     if (!xmlKey) {
         return NextResponse.json({ error: 'xmlKey ausente.' }, { status: 400 })
     }
@@ -71,12 +71,39 @@ export async function POST(request) {
         if (eanList.length > 0) {
             const { data: rows } = await supabase
                 .from('products')
-                .select('id, name, ean')
+                .select('id, name, ean, quantity')
                 .eq('tenant_id', tenantId)
                 .in('ean', eanList)
             if (Array.isArray(rows)) {
                 for (const r of rows) {
-                    if (r.ean) matchesByEan[r.ean] = { id: r.id, name: r.name }
+                    if (r.ean) matchesByEan[r.ean] = { id: r.id, name: r.name, quantity: r.quantity }
+                }
+            }
+        }
+
+        // 3. SKU+supplier lookups — quando o XML não tem EAN (cEAN "SEM GTIN")
+        // ainda conseguimos achar match pelo cProd+CNPJ do emitente. Resolve o
+        // caso comum de fornecedores que reutilizam o mesmo SKU pra cada NFe.
+        const skuList = Array.isArray(skus) ? skus.filter(Boolean) : []
+        let matchesBySku = {}
+        if (skuList.length > 0 && supplierCnpj) {
+            const { data: supplier } = await supabase
+                .from('suppliers')
+                .select('id')
+                .eq('cnpj', supplierCnpj)
+                .eq('tenant_id', tenantId)
+                .maybeSingle()
+            if (supplier?.id) {
+                const { data: rows } = await supabase
+                    .from('products')
+                    .select('id, name, sku, quantity')
+                    .eq('tenant_id', tenantId)
+                    .eq('supplier_id', supplier.id)
+                    .in('sku', skuList)
+                if (Array.isArray(rows)) {
+                    for (const r of rows) {
+                        if (r.sku) matchesBySku[r.sku] = { id: r.id, name: r.name, quantity: r.quantity }
+                    }
                 }
             }
         }
@@ -85,6 +112,7 @@ export async function POST(request) {
             isDuplicate: !!dup,
             importedAt: dup?.created_at || null,
             matchesByEan,
+            matchesBySku,
         })
     } catch (err) {
         console.error('[stock/import/preview] failure:', err)

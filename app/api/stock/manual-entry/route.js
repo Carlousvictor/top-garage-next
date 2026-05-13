@@ -145,7 +145,31 @@ export async function POST(request) {
             const finalSellingPrice = round2(finalUnitCost * (1 + margin / 100))
 
             let existingProd = null
-            if (it.sku?.trim()) {
+
+            // (a) Override explícito: operador vinculou via picker UI.
+            if (it.link_product_id) {
+                const { data } = await supabase
+                    .from('products')
+                    .select('id, quantity, ean')
+                    .eq('tenant_id', tenantId)
+                    .eq('id', it.link_product_id)
+                    .maybeSingle()
+                existingProd = data
+            }
+
+            // (b) Match automático por EAN (digitado manualmente).
+            if (!existingProd && it.ean?.trim()) {
+                const { data } = await supabase
+                    .from('products')
+                    .select('id, quantity, ean')
+                    .eq('tenant_id', tenantId)
+                    .eq('ean', it.ean.trim())
+                    .maybeSingle()
+                existingProd = data
+            }
+
+            // (c) Match automático por SKU + fornecedor.
+            if (!existingProd && it.sku?.trim()) {
                 const { data } = await supabase
                     .from('products')
                     .select('id, quantity, ean')
@@ -189,6 +213,26 @@ export async function POST(request) {
                 finalProductId = newProd.id
             }
 
+            // Equivalências: operador escolheu produtos relacionados no picker.
+            if (Array.isArray(it.linked_product_ids) && it.linked_product_ids.length > 0) {
+                const cleanIds = it.linked_product_ids.filter(Boolean).filter(id => id !== finalProductId)
+                if (cleanIds.length > 0) {
+                    const { data: cur } = await supabase
+                        .from('products')
+                        .select('linked_products')
+                        .eq('id', finalProductId)
+                        .eq('tenant_id', tenantId)
+                        .maybeSingle()
+                    const existing = Array.isArray(cur?.linked_products) ? cur.linked_products : []
+                    const merged = Array.from(new Set([...existing, ...cleanIds]))
+                    await supabase
+                        .from('products')
+                        .update({ linked_products: merged })
+                        .eq('id', finalProductId)
+                        .eq('tenant_id', tenantId)
+                }
+            }
+
             stockEntryItemsRows.push({
                 tenant_id: tenantId,
                 product_id: finalProductId,
@@ -209,6 +253,8 @@ export async function POST(request) {
                 tenant_id: tenantId,
                 supplier_id: supplierId,
                 xml_key: null,
+                invoice_number: invoiceNumber ? String(invoiceNumber).trim() : null,
+                emission_date: emissionDate || null,
                 total_value: nfTotal,
                 freight_amount: freight,
                 discount_amount: totalDiscount,

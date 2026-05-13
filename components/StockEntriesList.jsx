@@ -209,11 +209,21 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                                 <div>
                                     <h4 className="text-white font-bold">{entry.suppliers?.name || 'Fornecedor Desconhecido'}</h4>
                                     <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                                        <span className="text-xs text-gray-400 flex items-center gap-1">
-                                            <Calendar className="w-3 h-3" /> {new Date(entry.created_at).toLocaleDateString()}
+                                        {entry.invoice_number && (
+                                            <span className="text-xs text-gray-300 flex items-center gap-1" title="Número da NF">
+                                                <Hash className="w-3 h-3" /> NF {entry.invoice_number}
+                                            </span>
+                                        )}
+                                        {entry.emission_date && (
+                                            <span className="text-xs text-gray-400 flex items-center gap-1" title="Data de emissão">
+                                                <Calendar className="w-3 h-3" /> Emissão {new Date(entry.emission_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            </span>
+                                        )}
+                                        <span className="text-xs text-gray-500 flex items-center gap-1" title="Data do lançamento no sistema">
+                                            <Calendar className="w-3 h-3" /> Lançado {new Date(entry.created_at).toLocaleDateString('pt-BR')}
                                         </span>
                                         <span className="text-xs text-gray-400 flex items-center gap-1">
-                                            <Hash className="w-3 h-3" /> {entry.xml_key ? 'XML' : 'Manual'}
+                                            {entry.xml_key ? 'XML' : 'Manual'}
                                         </span>
                                         <span className="text-xs text-green-400 font-bold">
                                             R$ {Number(entry.total_value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}

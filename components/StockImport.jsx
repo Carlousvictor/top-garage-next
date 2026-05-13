@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { XMLParser } from 'fast-xml-parser';
 import { createClient } from '../utils/supabase/client';
 import { useAuth } from '../context/AuthContext';
-import { X } from 'lucide-react';
+import { X, Link2, Layers, Calendar, Hash } from 'lucide-react';
+import StockItemLinkModal from './StockItemLinkModal';
+import CurrencyInput from './CurrencyInput';
 
 // `onEntryCreated` é opcional — chamado após confirmar o import com sucesso
 // pra que o pai (ImportPage) possa atualizar histórico e trocar a aba.
@@ -21,6 +23,7 @@ export default function StockImport({ onEntryCreated }) {
     const [isPaidUpfront, setIsPaidUpfront] = useState(false); // UI flag para NFe à vista (sem <cobr>)
     const [upfrontPaymentMethod, setUpfrontPaymentMethod] = useState('Dinheiro');
     const [editingItemIndex, setEditingItemIndex] = useState(null);
+    const [linkingItemIndex, setLinkingItemIndex] = useState(null);
 
     // Frete + desconto extraídos do XML (vFrete/vDesc do ICMSTot) e editáveis.
     const [freightAmount, setFreightAmount] = useState(0);
@@ -74,7 +77,7 @@ export default function StockImport({ onEntryCreated }) {
     // quando o auth-token precisava refresh, a Promise não settlava — UI
     // ficava em loading pra sempre. Server-side usa cookie httpOnly resolvido
     // pelo helper, sem dependência de estado client-side.
-    const fetchPreviewMeta = async ({ xmlKey, eans }) => {
+    const fetchPreviewMeta = async ({ xmlKey, eans, skus, supplierCnpj }) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000);
         try {
@@ -83,7 +86,7 @@ export default function StockImport({ onEntryCreated }) {
                 headers: { 'Content-Type': 'application/json' },
                 credentials: 'include',
                 signal: controller.signal,
-                body: JSON.stringify({ xmlKey, eans })
+                body: JSON.stringify({ xmlKey, eans, skus, supplierCnpj })
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
@@ -159,8 +162,10 @@ export default function StockImport({ onEntryCreated }) {
                     quantity: parseFloat(prod.qCom),
                     unit: prod.uCom,
                     discount_amount: itemDisc,
-                    matchStatus: 'unknown', // 'matched_ean' | 'new' | 'unknown'
-                    matchedProductName: null
+                    matchStatus: 'unknown', // 'matched_ean' | 'matched_sku' | 'matched_manual' | 'new' | 'unknown'
+                    matchedProductName: null,
+                    link_product_id: null,    // override manual via picker
+                    linked_product_ids: []    // equivalências (UUIDs)
                 };
             });
 
@@ -180,13 +185,15 @@ export default function StockImport({ onEntryCreated }) {
                 setDiscountAmount(xmlDiscount);
             }
 
-            // Server-side preview: dup-check + EAN match com timeout 30s.
+            // Server-side preview: dup-check + EAN/SKU match com timeout 30s.
             // Substitui as queries client-side que travavam em token stale.
             let previewMeta;
             try {
                 previewMeta = await fetchPreviewMeta({
                     xmlKey,
-                    eans: items.map(i => i.ean).filter(Boolean)
+                    eans: items.map(i => i.ean).filter(Boolean),
+                    skus: items.map(i => i.sku).filter(Boolean),
+                    supplierCnpj: emit.CNPJ
                 });
             } catch (err) {
                 const msg = err.name === 'AbortError'
@@ -208,13 +215,20 @@ export default function StockImport({ onEntryCreated }) {
             }
 
             // Pinta status no preview a partir do mapa de matches retornado pelo server.
+            // Prioridade: EAN > SKU+fornecedor > novo.
             const matchesByEan = previewMeta.matchesByEan || {};
+            const matchesBySku = previewMeta.matchesBySku || {};
             items.forEach((it) => {
                 if (it.ean && matchesByEan[it.ean]) {
                     it.matchStatus = 'matched_ean';
                     it.matchedProductName = matchesByEan[it.ean].name;
+                    it.link_product_id = matchesByEan[it.ean].id;
+                } else if (it.sku && matchesBySku[it.sku]) {
+                    it.matchStatus = 'matched_sku';
+                    it.matchedProductName = matchesBySku[it.sku].name;
+                    it.link_product_id = matchesBySku[it.sku].id;
                 } else {
-                    it.matchStatus = it.ean ? 'new' : 'unknown';
+                    it.matchStatus = 'new';
                 }
             });
 
@@ -387,22 +401,39 @@ export default function StockImport({ onEntryCreated }) {
             {/* Preview Table */}
             {previewItems.length > 0 && (
                 <div className="animate-fade-in">
-                    <div className="flex justify-between items-center mb-4 bg-neutral-800 p-3 rounded-lg border border-neutral-700">
-                        <div>
-                            <p className="text-gray-400 text-sm">Fornecedor</p>
-                            <p className="text-white font-bold">{importData?.supplierName}</p>
+                    <div className="mb-4 bg-neutral-800 p-4 rounded-lg border border-neutral-700">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 items-end">
+                            <div className="md:col-span-2">
+                                <p className="text-gray-400 text-xs uppercase tracking-wide">Fornecedor</p>
+                                <p className="text-white font-bold truncate">{importData?.supplierName}</p>
+                                <p className="text-gray-500 text-[11px] font-mono">{importData?.supplierCNPJ}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400 text-xs uppercase tracking-wide flex items-center gap-1"><Hash className="w-3 h-3" /> Nº NF</p>
+                                <p className="text-white font-bold">{importData?.invoiceNumber || '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400 text-xs uppercase tracking-wide flex items-center gap-1"><Calendar className="w-3 h-3" /> Emissão</p>
+                                <p className="text-white font-bold">
+                                    {importData?.emissionDate
+                                        ? new Date(importData.emissionDate + 'T12:00:00').toLocaleDateString('pt-BR')
+                                        : '—'}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-gray-400 text-xs uppercase tracking-wide">Total</p>
+                                <p className="text-green-400 font-bold text-lg">R$ {Number(importData?.totalValue || 0).toFixed(2)}</p>
+                            </div>
                         </div>
-                        <div>
-                            <p className="text-gray-400 text-sm">Total da Nota</p>
-                            <p className="text-green-400 font-bold">R$ {importData?.totalValue.toFixed(2)}</p>
+                        <div className="mt-3 flex justify-end">
+                            <button
+                                onClick={confirmImport}
+                                disabled={loading}
+                                className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 transition-colors"
+                            >
+                                {loading ? 'Salvando...' : 'Confirmar Importação'}
+                            </button>
                         </div>
-                        <button
-                            onClick={confirmImport}
-                            disabled={loading}
-                            className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-green-900/20 transition-colors"
-                        >
-                            {loading ? 'Salvando...' : 'Confirmar Importação'}
-                        </button>
                     </div>
 
                     {/* Frete e Desconto — prepopulado a partir do XML, editável */}
@@ -410,13 +441,10 @@ export default function StockImport({ onEntryCreated }) {
                         <h3 className="text-sm uppercase tracking-wide text-gray-400 font-bold mb-3">Frete e Desconto</h3>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div>
-                                <label className="block text-xs text-gray-400 mb-1">Frete (R$)</label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
+                                <label className="block text-xs text-gray-400 mb-1">Frete</label>
+                                <CurrencyInput
                                     value={freightAmount}
-                                    onChange={(e) => setFreightAmount(parseFloat(e.target.value) || 0)}
+                                    onChange={(n) => setFreightAmount(n)}
                                     className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
                                 />
                                 <p className="text-[11px] text-gray-500 mt-1">Rateado proporcional nos custos.</p>
@@ -439,13 +467,10 @@ export default function StockImport({ onEntryCreated }) {
                             </div>
                             {discountMode === 'total' && (
                                 <div>
-                                    <label className="block text-xs text-gray-400 mb-1">Desconto total (R$)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        min="0"
+                                    <label className="block text-xs text-gray-400 mb-1">Desconto total</label>
+                                    <CurrencyInput
                                         value={discountAmount}
-                                        onChange={(e) => setDiscountAmount(parseFloat(e.target.value) || 0)}
+                                        onChange={(n) => setDiscountAmount(n)}
                                         className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
                                     />
                                 </div>
@@ -462,6 +487,7 @@ export default function StockImport({ onEntryCreated }) {
                                     <th className="px-4 py-3">SKU</th>
                                     <th className="px-4 py-3">EAN</th>
                                     <th className="px-4 py-3 w-1/3">Produto</th>
+                                    <th className="px-4 py-3">Vínculo / Equiv.</th>
                                     <th className="px-4 py-3">Qtd</th>
                                     <th className="px-4 py-3">Custo (R$)</th>
                                     {discountMode === 'per_item' && (
@@ -486,16 +512,24 @@ export default function StockImport({ onEntryCreated }) {
                                         </td>
                                         <td className="px-4 py-2">
                                             {item.matchStatus === 'matched_ean' ? (
-                                                <span className="inline-block bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded border border-green-800" title={`Já cadastrado como: ${item.matchedProductName}`}>
-                                                    ✓ já cadastrado
+                                                <span className="inline-block bg-green-900/40 text-green-300 text-xs px-2 py-1 rounded border border-green-800" title={`Já cadastrado como: ${item.matchedProductName} (match por EAN)`}>
+                                                    ✓ EAN
+                                                </span>
+                                            ) : item.matchStatus === 'matched_sku' ? (
+                                                <span className="inline-block bg-emerald-900/40 text-emerald-300 text-xs px-2 py-1 rounded border border-emerald-800" title={`Já cadastrado como: ${item.matchedProductName} (match por SKU+fornecedor)`}>
+                                                    ✓ SKU
+                                                </span>
+                                            ) : item.matchStatus === 'matched_manual' ? (
+                                                <span className="inline-block bg-purple-900/40 text-purple-200 text-xs px-2 py-1 rounded border border-purple-800" title={`Vinculado manualmente: ${item.matchedProductName}`}>
+                                                    ✓ manual
                                                 </span>
                                             ) : item.matchStatus === 'new' ? (
                                                 <span className="inline-block bg-blue-900/40 text-blue-300 text-xs px-2 py-1 rounded border border-blue-800">
                                                     + novo
                                                 </span>
                                             ) : (
-                                                <span className="inline-block bg-neutral-700 text-gray-300 text-xs px-2 py-1 rounded border border-neutral-600" title="Sem EAN — será feito match por SKU+fornecedor no momento da confirmação">
-                                                    ? match no confirmar
+                                                <span className="inline-block bg-neutral-700 text-gray-300 text-xs px-2 py-1 rounded border border-neutral-600">
+                                                    ?
                                                 </span>
                                             )}
                                         </td>
@@ -510,6 +544,42 @@ export default function StockImport({ onEntryCreated }) {
                                             />
                                         </td>
                                         <td className="px-4 py-2">
+                                            <div className="flex flex-col gap-1">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLinkingItemIndex(index)}
+                                                    className={`text-[11px] px-2 py-1 rounded border flex items-center gap-1 transition ${
+                                                        item.link_product_id
+                                                            ? 'bg-emerald-900/30 border-emerald-800 text-emerald-300 hover:bg-emerald-900/50'
+                                                            : 'bg-neutral-800 border-neutral-700 text-gray-300 hover:bg-neutral-700'
+                                                    }`}
+                                                    title={item.matchedProductName || 'Vincular a produto existente'}
+                                                >
+                                                    <Link2 className="w-3 h-3" />
+                                                    {item.link_product_id
+                                                        ? (item.matchedProductName
+                                                            ? (item.matchedProductName.length > 14 ? item.matchedProductName.slice(0, 14) + '…' : item.matchedProductName)
+                                                            : 'vinculado')
+                                                        : 'vincular'}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setLinkingItemIndex(index)}
+                                                    className={`text-[11px] px-2 py-1 rounded border flex items-center gap-1 transition ${
+                                                        (item.linked_product_ids || []).length > 0
+                                                            ? 'bg-purple-900/30 border-purple-800 text-purple-200 hover:bg-purple-900/50'
+                                                            : 'bg-neutral-800 border-neutral-700 text-gray-300 hover:bg-neutral-700'
+                                                    }`}
+                                                    title="Configurar equivalências"
+                                                >
+                                                    <Layers className="w-3 h-3" />
+                                                    {(item.linked_product_ids || []).length > 0
+                                                        ? `${item.linked_product_ids.length} equiv.`
+                                                        : 'equivalências'}
+                                                </button>
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-2">
                                             <input
                                                 type="number"
                                                 value={item.quantity}
@@ -518,22 +588,18 @@ export default function StockImport({ onEntryCreated }) {
                                             />
                                         </td>
                                         <td className="px-4 py-2">
-                                            <input
-                                                type="number"
+                                            <CurrencyInput
                                                 value={item.cost_price}
-                                                onChange={(e) => handleItemChange(index, 'cost_price', e.target.value)}
-                                                className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-gray-300"
+                                                onChange={(n) => handleItemChange(index, 'cost_price', n)}
+                                                className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-gray-300"
                                             />
                                         </td>
                                         {discountMode === 'per_item' && (
                                             <td className="px-4 py-2">
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
+                                                <CurrencyInput
                                                     value={item.discount_amount || 0}
-                                                    onChange={(e) => handleItemChange(index, 'discount_amount', e.target.value)}
-                                                    className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-red-300"
+                                                    onChange={(n) => handleItemChange(index, 'discount_amount', n)}
+                                                    className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-red-300"
                                                 />
                                             </td>
                                         )}
@@ -546,11 +612,10 @@ export default function StockImport({ onEntryCreated }) {
                                             />
                                         </td>
                                         <td className="px-4 py-2">
-                                            <input
-                                                type="number"
+                                            <CurrencyInput
                                                 value={item.selling_price}
-                                                onChange={(e) => handleItemChange(index, 'selling_price', e.target.value)}
-                                                className="bg-neutral-700 rounded px-2 py-1 w-24 text-right text-green-400 font-bold"
+                                                onChange={(n) => handleItemChange(index, 'selling_price', n)}
+                                                className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-green-400 font-bold"
                                             />
                                         </td>
                                     </tr>
@@ -662,6 +727,37 @@ export default function StockImport({ onEntryCreated }) {
                 </div>
             )}
 
+            {/* Link/Equivalences Modal */}
+            {linkingItemIndex !== null && previewItems[linkingItemIndex] && (
+                <StockItemLinkModal
+                    isOpen={true}
+                    onClose={() => setLinkingItemIndex(null)}
+                    itemLabel={previewItems[linkingItemIndex].name}
+                    initialLinkProductId={previewItems[linkingItemIndex].link_product_id}
+                    initialLinkProductName={previewItems[linkingItemIndex].matchedProductName}
+                    initialEquivIds={previewItems[linkingItemIndex].linked_product_ids || []}
+                    onApply={({ link_product_id, link_product_name, linked_product_ids }) => {
+                        const idx = linkingItemIndex;
+                        const newItems = [...previewItems];
+                        const it = { ...newItems[idx] };
+                        it.link_product_id = link_product_id;
+                        it.linked_product_ids = linked_product_ids || [];
+                        if (link_product_id) {
+                            it.matchedProductName = link_product_name;
+                            // Marca como vínculo manual quando difere do auto-match.
+                            if (it.matchStatus !== 'matched_ean' && it.matchStatus !== 'matched_sku') {
+                                it.matchStatus = 'matched_manual';
+                            }
+                        } else if (it.matchStatus === 'matched_manual') {
+                            it.matchStatus = 'new';
+                            it.matchedProductName = null;
+                        }
+                        newItems[idx] = it;
+                        setPreviewItems(newItems);
+                    }}
+                />
+            )}
+
             {/* Edit Item Modal */}
             {editingItemIndex !== null && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in p-4">
@@ -721,11 +817,10 @@ export default function StockImport({ onEntryCreated }) {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custo (R$)</label>
-                                    <input
-                                        type="number"
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Custo</label>
+                                    <CurrencyInput
                                         value={previewItems[editingItemIndex].cost_price}
-                                        onChange={(e) => handleItemChange(editingItemIndex, 'cost_price', e.target.value)}
+                                        onChange={(n) => handleItemChange(editingItemIndex, 'cost_price', n)}
                                         className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
                                     />
                                 </div>
@@ -739,11 +834,10 @@ export default function StockImport({ onEntryCreated }) {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-green-400 uppercase tracking-wider">Venda (R$)</label>
-                                    <input
-                                        type="number"
+                                    <label className="text-xs font-semibold text-green-400 uppercase tracking-wider">Venda</label>
+                                    <CurrencyInput
                                         value={previewItems[editingItemIndex].selling_price}
-                                        onChange={(e) => handleItemChange(editingItemIndex, 'selling_price', e.target.value)}
+                                        onChange={(n) => handleItemChange(editingItemIndex, 'selling_price', n)}
                                         className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-green-400 font-bold focus:outline-none focus:border-green-500 transition-colors"
                                     />
                                 </div>
