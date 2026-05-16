@@ -5,6 +5,7 @@ import { useConfirm } from '../context/ConfirmContext'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Search, X } from 'lucide-react'
+import Pagination, { usePagination } from './Pagination'
 
 export default function ServiceOrderList({ initialOrders }) {
     const supabase = createClient()
@@ -15,6 +16,10 @@ export default function ServiceOrderList({ initialOrders }) {
     // Busca livre: casa em placa, nome do cliente, número da OS ou modelo do veículo.
     // Útil pra puxar histórico de manutenção de um veículo/cliente específico.
     const [searchText, setSearchText] = useState('')
+    // Filtro de data por created_at (campo "Data da OS"). Range opcional —
+    // qualquer um dos lados em branco vira limite aberto.
+    const [dateStart, setDateStart] = useState('')
+    const [dateEnd, setDateEnd] = useState('')
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
 
@@ -39,8 +44,23 @@ export default function ServiceOrderList({ initialOrders }) {
                 normalize(o.vehicle_model).includes(q)
             )
         }
+        // Filtro de data — compara created_at contra os limites do range.
+        // Constrói os limites com horários 00:00 / 23:59 pra incluir o dia inteiro
+        // nos extremos. Sem isso, uma OS de 14h no dia "Até" ficaria de fora.
+        if (dateStart || dateEnd) {
+            const startMs = dateStart ? new Date(dateStart + 'T00:00:00').getTime() : -Infinity
+            const endMs = dateEnd ? new Date(dateEnd + 'T23:59:59.999').getTime() : Infinity
+            list = list.filter(o => {
+                if (!o.created_at) return false
+                const t = new Date(o.created_at).getTime()
+                return t >= startMs && t <= endMs
+            })
+        }
         return list
     })()
+
+    // Paginação client-side aplicada sobre os filtros de status + busca.
+    const pagination = usePagination(filteredOrders, 25)
 
     const getStatusColor = (status) => {
         switch (status) {
@@ -94,7 +114,7 @@ export default function ServiceOrderList({ initialOrders }) {
                 )}
             </div>
 
-            <div className="mb-6 flex gap-2 overflow-x-auto pb-2 items-center">
+            <div className="mb-4 flex gap-2 overflow-x-auto pb-2 items-center">
                 {['Todos', 'Aberto', 'Em Andamento', 'Concluido', 'Cancelado', 'Orçamento'].map(status => (
                     <button
                         key={status}
@@ -107,11 +127,47 @@ export default function ServiceOrderList({ initialOrders }) {
                         {status}
                     </button>
                 ))}
-                {(searchText || filterStatus !== 'Todos') && (
+                {(searchText || filterStatus !== 'Todos' || dateStart || dateEnd) && (
                     <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">
                         {filteredOrders.length} de {orders.length}
                     </span>
                 )}
+            </div>
+
+            {/* Range de data (De / Até) sobre created_at — compatível com OS retroativas. */}
+            <div className="mb-6 flex flex-wrap gap-3 items-end bg-black border border-neutral-800 rounded-lg p-3">
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Data da OS — De</label>
+                    <input
+                        type="date"
+                        value={dateStart}
+                        max={dateEnd || undefined}
+                        onChange={(e) => setDateStart(e.target.value)}
+                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
+                    />
+                </div>
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Até</label>
+                    <input
+                        type="date"
+                        value={dateEnd}
+                        min={dateStart || undefined}
+                        onChange={(e) => setDateEnd(e.target.value)}
+                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
+                    />
+                </div>
+                {(dateStart || dateEnd) && (
+                    <button
+                        type="button"
+                        onClick={() => { setDateStart(''); setDateEnd('') }}
+                        className="text-xs text-red-400 hover:text-red-300 underline px-2 py-2 whitespace-nowrap"
+                    >
+                        Limpar data
+                    </button>
+                )}
+                <p className="text-[11px] text-gray-500 ml-auto whitespace-nowrap self-center">
+                    Filtra pela data da OS (created_at). Aceita só "De" ou só "Até".
+                </p>
             </div>
 
             {orders.length === 0 ? (
@@ -123,7 +179,7 @@ export default function ServiceOrderList({ initialOrders }) {
                     Nenhuma OS para os filtros aplicados.
                     <button
                         type="button"
-                        onClick={() => { setSearchText(''); setFilterStatus('Todos') }}
+                        onClick={() => { setSearchText(''); setFilterStatus('Todos'); setDateStart(''); setDateEnd('') }}
                         className="block mx-auto mt-2 text-xs text-red-400 hover:text-red-300 underline"
                     >
                         Limpar filtros
@@ -144,7 +200,7 @@ export default function ServiceOrderList({ initialOrders }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredOrders.map((order) => (
+                            {pagination.paginatedItems.map((order) => (
                                 <tr key={order.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
                                     <td className="px-4 py-3 font-medium text-white">#{order.id}</td>
                                     <td className="px-4 py-3">{order.clients?.name || 'Consumidor'}</td>
@@ -185,6 +241,15 @@ export default function ServiceOrderList({ initialOrders }) {
                             ))}
                         </tbody>
                     </table>
+                    <Pagination
+                        page={pagination.page}
+                        totalPages={pagination.totalPages}
+                        pageSize={pagination.pageSize}
+                        total={pagination.total}
+                        onPageChange={pagination.setPage}
+                        onPageSizeChange={pagination.setPageSize}
+                        label="OS"
+                    />
                 </div>
             )}
         </div>

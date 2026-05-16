@@ -76,7 +76,9 @@ export default function ServiceOrderForm({
     const [plate, setPlate] = useState(order?.vehicle_plate || '')
     const [brand, setBrand] = useState(order?.vehicle_brand || '')
     const [model, setModel] = useState(order?.vehicle_model || '')
-    const [status, setStatus] = useState(order?.status || 'Aberto')
+    // OS de Terceiros nasce com status "Em Terceiros" (estado próprio do fluxo).
+    // OS normal mantém "Aberto" como antes. Em edição, sempre respeita o status persistido.
+    const [status, setStatus] = useState(order?.status || (isThirdParty ? 'Em Terceiros' : 'Aberto'))
     const [observation, setObservation] = useState(order?.observation || '')
     const [isEstimate, setIsEstimate] = useState(order?.is_estimate || false)
     const [nextRevisionDate, setNextRevisionDate] = useState(order?.next_revision_date ? order.next_revision_date.split('T')[0] : '')
@@ -322,7 +324,9 @@ export default function ServiceOrderForm({
                 toast.error('Selecione um cliente cadastrado ou digite um nome livre.')
                 return
             }
-        } else {
+        } else if (!isEstimate) {
+            // Orçamento aceita cliente em branco (vira "Consumidor"). OS efetiva
+            // continua exigindo cliente cadastrado pra rastrear pós-venda/CRM.
             if (!clientId) {
                 toast.error('Selecione um cliente.')
                 return
@@ -402,7 +406,8 @@ export default function ServiceOrderForm({
                 toast.error('Selecione um cliente cadastrado ou digite um nome livre.')
                 return
             }
-        } else {
+        } else if (!isEstimate) {
+            // Orçamento permite Finalizar sem cliente (consumidor avulso).
             if (!clientId) {
                 toast.error('Selecione um cliente.')
                 return
@@ -599,7 +604,7 @@ export default function ServiceOrderForm({
                         <div className="md:col-span-2">
                             <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
                                 <label className="block text-sm font-medium text-gray-300">
-                                    Cliente <span className="text-red-500">*</span>
+                                    Cliente {isEstimate ? <span className="text-xs text-gray-500 font-normal">(opcional — em branco vira "Consumidor")</span> : <span className="text-red-500">*</span>}
                                 </label>
                                 <div className="flex gap-2">
                                     <button
@@ -669,7 +674,7 @@ export default function ServiceOrderForm({
                                     })()}
                                     onChange={(opt) => setClientId(opt?.value || '')}
                                     options={clients.map(c => ({ value: c.id, label: c.name }))}
-                                    placeholder="Selecione um cliente..."
+                                    placeholder={isEstimate ? 'Selecione um cliente ou deixe em branco (Consumidor)...' : 'Selecione um cliente...'}
                                     styles={selectStyles}
                                     isClearable
                                     noOptionsMessage={() => 'Nenhum cliente encontrado'}
@@ -829,6 +834,9 @@ export default function ServiceOrderForm({
                                 onChange={(e) => setStatus(e.target.value)}
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
                             >
+                                {/* "Em Terceiros" só aparece no fluxo de terceiros pra não poluir o dropdown
+                                    da OS normal. Mantemos no value mesmo se a OS legada tinha esse status. */}
+                                {isThirdParty && <option value="Em Terceiros">Em Terceiros</option>}
                                 <option value="Aberto">Aberto</option>
                                 <option value="Em Andamento">Em Andamento</option>
                                 <option value="Concluido">Concluído</option>

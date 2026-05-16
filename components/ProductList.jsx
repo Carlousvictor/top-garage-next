@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { FileText, AlertCircle, X as XIcon, Printer } from 'lucide-react'
 import LowStockReport from './LowStockReport'
+import Pagination, { usePagination } from './Pagination'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
     const supabase = createClient()
@@ -320,6 +321,9 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Usada pra mostrar o badge no toggle.
     const lowStockCount = products.filter(isLowStock).length
 
+    // Paginação client-side aplicada sobre o resultado dos filtros existentes.
+    const productPagination = usePagination(filteredProducts, 25)
+
     // Set com IDs equivalentes — usado pra marcar visualmente as linhas na tabela
     const equivalentIds = (() => {
         if (!searchProduct) return new Set()
@@ -542,7 +546,7 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                                         : 'Nenhum produto encontrado.'}
                                 </td></tr>
                             ) : (
-                                filteredProducts.map((product) => (
+                                productPagination.paginatedItems.map((product) => (
                                     <tr key={product.id} className={`border-b border-neutral-800 hover:bg-neutral-800 ${equivalentIds.has(product.id) ? 'bg-blue-500/5' : ''}`}>
                                         <td className="px-6 py-4 font-mono text-xs">{product.sku || '-'}</td>
                                         <td className="px-6 py-4 font-medium text-white">
@@ -584,6 +588,15 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                             )}
                         </tbody>
                     </table>
+                    <Pagination
+                        page={productPagination.page}
+                        totalPages={productPagination.totalPages}
+                        pageSize={productPagination.pageSize}
+                        total={productPagination.total}
+                        onPageChange={productPagination.setPage}
+                        onPageSizeChange={productPagination.setPageSize}
+                        label="produtos"
+                    />
                 </div>
             ) : (
                 /* Form */

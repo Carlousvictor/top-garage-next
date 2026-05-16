@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
 import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck, RefreshCw } from 'lucide-react'
+import Pagination, { usePagination } from './Pagination'
 
 // `refreshTrigger` é opcional: o pai pode incrementá-lo após salvar uma nota
 // pra forçar refetch sem precisar remontar o componente. Default 0 mantém
@@ -20,6 +21,7 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
     const [loadError, setLoadError] = useState(null)
     const [expandedEntry, setExpandedEntry] = useState(null)
     const [entryItems, setEntryItems] = useState({}) // { entryId: [items] }
+    const pagination = usePagination(entries, 10)
 
     const fetchEntries = async () => {
         setLoading(true)
@@ -199,7 +201,7 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                     <p>Nenhuma nota fiscal encontrada no histórico.</p>
                 </div>
             ) : (
-                entries.map(entry => (
+                pagination.paginatedItems.map(entry => (
                     <div key={entry.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden transition-all duration-300">
                         <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="flex items-center gap-4">
@@ -289,6 +291,18 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                         )}
                     </div>
                 ))
+            )}
+
+            {entries.length > 0 && (
+                <Pagination
+                    page={pagination.page}
+                    totalPages={pagination.totalPages}
+                    pageSize={pagination.pageSize}
+                    total={pagination.total}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                    label="notas"
+                />
             )}
         </div>
     )

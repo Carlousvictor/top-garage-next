@@ -1,6 +1,7 @@
 "use client"
 import { useState, useEffect, useMemo } from 'react'
 import Select from 'react-select'
+import Pagination, { usePagination } from './Pagination'
 
 export default function CRMList({ recentOrders, error }) {
     const [alerts, setAlerts] = useState([])
@@ -161,6 +162,9 @@ export default function CRMList({ recentOrders, error }) {
         return matchClient && matchVehicle && matchStatus && matchDate
     })
 
+    // Paginação aplicada sobre os alertas filtrados.
+    const pagination = usePagination(filteredAlerts, 25)
+
     const getStatusBadge = (days) => {
         if (days < 0) return <span className="bg-red-900 text-red-300 font-bold px-2 py-1 rounded text-xs">Vencido ({Math.abs(days)} dias)</span>
         if (days <= 15) return <span className="bg-orange-900 text-orange-300 font-bold px-2 py-1 rounded text-xs">Atenção ({days} dias)</span>
@@ -294,7 +298,7 @@ export default function CRMList({ recentOrders, error }) {
                                 <td colSpan="7" className="text-center py-6">Nenhum alerta de manutenção encontrado.</td>
                             </tr>
                         ) : (
-                            filteredAlerts.map((alert, idx) => {
+                            pagination.paginatedItems.map((alert, idx) => {
                                 const whatsappLink = getWhatsAppLink(alert);
                                 return (
                                     <tr key={idx} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
@@ -331,6 +335,15 @@ export default function CRMList({ recentOrders, error }) {
                         )}
                     </tbody>
                 </table>
+                <Pagination
+                    page={pagination.page}
+                    totalPages={pagination.totalPages}
+                    pageSize={pagination.pageSize}
+                    total={pagination.total}
+                    onPageChange={pagination.setPage}
+                    onPageSizeChange={pagination.setPageSize}
+                    label="alertas"
+                />
             </div>
         </div >
     )

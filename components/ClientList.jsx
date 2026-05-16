@@ -4,6 +4,7 @@ import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
 import { Search, X as XIcon } from 'lucide-react'
+import Pagination, { usePagination } from './Pagination'
 
 const EMPTY_VEHICLE = {
     plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '',
@@ -185,6 +186,10 @@ export default function ClientList({ initialClients }) {
         )
     })()
 
+    // Paginação client-side: lista renderizada nunca passa de `pageSize` linhas,
+    // independente do tamanho de `filteredClients`. Default = 25.
+    const pagination = usePagination(filteredClients, 25)
+
     return (
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
             <div className="flex justify-between items-center mb-6">
@@ -230,7 +235,7 @@ export default function ClientList({ initialClients }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredClients.map((client) => (
+                            {pagination.paginatedItems.map((client) => (
                                 <tr key={client.id} className="border-b border-neutral-800 hover:bg-neutral-800">
                                     <td className="px-6 py-4 font-medium text-white">{client.name}</td>
                                     <td className="px-6 py-4">{client.email || '-'}</td>
@@ -255,6 +260,15 @@ export default function ClientList({ initialClients }) {
                         </tbody>
                     </table>
                     </div>
+                    <Pagination
+                        page={pagination.page}
+                        totalPages={pagination.totalPages}
+                        pageSize={pagination.pageSize}
+                        total={pagination.total}
+                        onPageChange={pagination.setPage}
+                        onPageSizeChange={pagination.setPageSize}
+                        label="clientes"
+                    />
                 </>
             ) : (
                 <form onSubmit={handleSave} className="bg-black p-6 rounded-lg border border-neutral-800">
