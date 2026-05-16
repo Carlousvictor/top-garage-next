@@ -131,6 +131,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
             sku: '',
             ean: '',
             quantity: 1,
+            // nf_total = valor total daquele item na nota fiscal (qtd × unitário).
+            // Operador digita o que tá na NF e o sistema deriva cost_price
+            // automaticamente quando preencher a quantidade. Sync bidirecional
+            // com cost_price (editar cost_price também recalcula nf_total).
+            nf_total: 0,
             cost_price: 0,
             margin: defaultMargin,
             selling_price: 0,
@@ -146,10 +151,37 @@ export default function ManualStockEntry({ onEntryCreated }) {
         setItems(prev => prev.map(it => {
             if (it.id !== id) return it
             const next = { ...it, [field]: value }
-            if (field === 'cost_price' || field === 'margin') {
-                const cost = parseFloat(field === 'cost_price' ? value : next.cost_price) || 0
-                const m = parseFloat(field === 'margin' ? value : next.margin) || 0
-                next.selling_price = +(cost * (1 + m / 100)).toFixed(2)
+
+            // Sync bidirecional nf_total ↔ cost_price ↔ quantity:
+            //   - Editou nf_total: cost_price = nf_total / quantity (4 casas — precisão
+            //     pra que qty × cost_price reconcilie com nf_total quando dá dízima)
+            //   - Editou quantity: se já tem nf_total, recalcula cost_price; se não, recalcula nf_total
+            //   - Editou cost_price direto: nf_total = cost_price * quantity (2 casas, é total R$)
+            // quantity é sempre inteiro (parseInt).
+            const qty = parseInt(next.quantity, 10) || 0
+            if (field === 'nf_total') {
+                const total = parseFloat(value) || 0
+                next.cost_price = qty > 0 ? +(total / qty).toFixed(4) : 0
+            } else if (field === 'cost_price') {
+                const cost = parseFloat(value) || 0
+                next.nf_total = +(cost * qty).toFixed(2)
+            } else if (field === 'quantity') {
+                // Prioriza preservar o nf_total que o operador digitou da NF —
+                // re-deriva o cost_price com a nova qtd. Se nf_total=0 (ainda
+                // não preenchido), mantém cost_price e atualiza nf_total.
+                const total = parseFloat(next.nf_total) || 0
+                if (total > 0) {
+                    next.cost_price = qty > 0 ? +(total / qty).toFixed(4) : 0
+                } else {
+                    const cost = parseFloat(next.cost_price) || 0
+                    next.nf_total = +(cost * qty).toFixed(2)
+                }
+            }
+
+            if (field === 'cost_price' || field === 'margin' || field === 'nf_total' || field === 'quantity') {
+                const cost = parseFloat(next.cost_price) || 0
+                const m = parseFloat(next.margin) || 0
+                next.selling_price = +(cost * (1 + m / 100)).toFixed(4)
             }
             // Auto-sugestão: roda em mudança de name/sku/ean enquanto não há
             // vínculo manual (link_product_id). Operador pode ignorar.
@@ -469,6 +501,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                 <tr>
                                     <th className="px-2 py-2 text-left">Descrição *</th>
                                     <th className="px-2 py-2 text-left w-24">SKU</th>
+                                    <th className="px-2 py-2 text-right w-28">Valor NF R$</th>
                                     <th className="px-2 py-2 text-right w-20">Qtd *</th>
                                     <th className="px-2 py-2 text-right w-28">Custo R$ *</th>
                                     <th className="px-2 py-2 text-right w-20">Margem%</th>
@@ -531,11 +564,25 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 />
                                             </td>
                                             <td className="px-2 py-2">
+                                                <CurrencyInput
+                                                    value={it.nf_total}
+                                                    onChange={(n) => handleUpdateItem(it.id, 'nf_total', n)}
+                                                    decimals={2}
+                                                    className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                    title="Valor total deste item na nota (R$). Custo unitário = total ÷ quantidade."
+                                                />
+                                            </td>
+                                            <td className="px-2 py-2">
                                                 <input
                                                     type="number"
-                                                    step="0.01"
+                                                    step="1"
+                                                    min="1"
                                                     value={it.quantity}
-                                                    onChange={(e) => handleUpdateItem(it.id, 'quantity', parseFloat(e.target.value) || 0)}
+                                                    onChange={(e) => handleUpdateItem(it.id, 'quantity', parseInt(e.target.value, 10) || 0)}
+                                                    onKeyDown={(e) => {
+                                                        // Bloqueia separadores decimais — quantidade é sempre inteira.
+                                                        if (e.key === '.' || e.key === ',' || e.key === 'e' || e.key === '-') e.preventDefault()
+                                                    }}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
@@ -543,8 +590,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 <CurrencyInput
                                                     value={it.cost_price}
                                                     onChange={(n) => handleUpdateItem(it.id, 'cost_price', n)}
-                                                    decimals={3}
+                                                    decimals={4}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
+                                                    title="Custo unitário (4 casas pra precisão quando o total da NF dá dízima). Sincroniza automaticamente quando você preenche Valor NF + Qtd."
                                                 />
                                             </td>
                                             <td className="px-2 py-2">
@@ -560,7 +608,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 <CurrencyInput
                                                     value={it.selling_price}
                                                     onChange={(n) => handleUpdateItem(it.id, 'selling_price', n)}
-                                                    decimals={3}
+                                                    decimals={4}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
@@ -603,24 +651,24 @@ export default function ManualStockEntry({ onEntryCreated }) {
                             </tbody>
                             <tfoot className="text-sm">
                                 <tr>
-                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Subtotal</td>
+                                    <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Subtotal</td>
                                     <td className="px-2 py-1.5 text-right text-white">{fmt(subtotalBruto)}</td>
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Frete</td>
+                                    <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Frete</td>
                                     <td className="px-2 py-1.5 text-right text-white">{fmt(freightApplied)}</td>
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">
+                                    <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">
                                         Desconto {discountMode === 'per_item' ? '(por item)' : '(total)'}
                                     </td>
                                     <td className="px-2 py-1.5 text-right text-red-400">- {fmt(totalDiscountApplied)}</td>
                                     <td></td>
                                 </tr>
                                 <tr className="border-t border-neutral-800">
-                                    <td colSpan={discountMode === 'per_item' ? 7 : 6} className="px-2 py-3 text-right text-gray-400 uppercase text-xs font-bold">Total da NF</td>
+                                    <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-3 text-right text-gray-400 uppercase text-xs font-bold">Total da NF</td>
                                     <td className="px-2 py-3 text-right text-white font-black text-lg">
                                         {fmt(total)}
                                     </td>

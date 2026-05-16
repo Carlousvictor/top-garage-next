@@ -1,39 +1,45 @@
 -- =====================================================================
--- 2026-05-16 — 3 casas decimais em campos monetários de entrada de nota
+-- 2026-05-16 — Precisão decimal em campos monetários de entrada de nota
 -- =====================================================================
--- Aditivo: amplia precisão de NUMERIC(12,2) → NUMERIC(13,3) nas colunas
--- usadas em entrada de nota (preço de custo, venda, frete e desconto).
--- Valores existentes preservados sem perda (truncar 2 → 3 casas é seguro).
+-- Aditivo: amplia precisão das colunas usadas em entrada de nota.
+--   - cost_price / selling_price → NUMERIC(14,4) (4 casas — pra reconciliar
+--     total da NF quando a divisão total/qty dá dízima, ex: 960,23 / 24).
+--   - frete / desconto → NUMERIC(13,3) (3 casas — suficiente).
+-- Valores existentes preservados sem perda.
 --
 -- Demais áreas (transactions, daily_closures, paid_amount, etc) continuam
--- com 2 casas — padrão financeiro brasileiro do PDV/OS não tem 3 casas.
+-- com 2 casas — padrão financeiro brasileiro do PDV/OS não tem decimais
+-- estendidos.
 --
--- Idempotente: usa CASE/IF pra checar se já está em (13,3) antes de alterar.
+-- Idempotente: checa scale atual antes de alterar; skip se já tá igual ou maior.
 -- =====================================================================
 
 DO $$
 DECLARE
-    r RECORD;
+    -- [tabela, coluna, precisão_alvo, scale_alvo]
     cols TEXT[][] := ARRAY[
-        ARRAY['stock_entry_items','cost_price'],
-        ARRAY['stock_entry_items','selling_price'],
-        ARRAY['stock_entries','freight_amount'],
-        ARRAY['stock_entries','discount_amount'],
-        ARRAY['stock_entry_items','discount_amount'],
-        ARRAY['products','cost_price'],
-        ARRAY['products','selling_price'],
-        ARRAY['products','price']
+        ARRAY['stock_entry_items','cost_price','14','4'],
+        ARRAY['stock_entry_items','selling_price','14','4'],
+        ARRAY['products','cost_price','14','4'],
+        ARRAY['products','selling_price','14','4'],
+        ARRAY['products','price','14','4'],
+        ARRAY['stock_entries','freight_amount','13','3'],
+        ARRAY['stock_entries','discount_amount','13','3'],
+        ARRAY['stock_entry_items','discount_amount','13','3']
     ];
     tbl TEXT;
     col TEXT;
+    target_precision INT;
+    target_scale INT;
     current_precision INT;
     current_scale INT;
 BEGIN
     FOR i IN 1..array_length(cols, 1) LOOP
         tbl := cols[i][1];
         col := cols[i][2];
+        target_precision := cols[i][3]::INT;
+        target_scale := cols[i][4]::INT;
 
-        -- Tabela existe?
         IF NOT EXISTS (
             SELECT 1 FROM information_schema.tables
             WHERE table_schema = 'public' AND table_name = tbl
@@ -41,7 +47,6 @@ BEGIN
             CONTINUE;
         END IF;
 
-        -- Coluna existe?
         IF NOT EXISTS (
             SELECT 1 FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = tbl AND column_name = col
@@ -53,16 +58,16 @@ BEGIN
         FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = tbl AND column_name = col;
 
-        -- Já está em 13,3 (ou superior em scale)? skip
-        IF current_scale >= 3 THEN
-            RAISE NOTICE 'Skip %.%: já tem % casas.', tbl, col, current_scale;
+        IF current_scale >= target_scale AND current_precision >= target_precision THEN
+            RAISE NOTICE 'Skip %.%: já está em (%,%).', tbl, col, current_precision, current_scale;
             CONTINUE;
         END IF;
 
         EXECUTE format(
-            'ALTER TABLE public.%I ALTER COLUMN %I TYPE NUMERIC(13,3)',
-            tbl, col
+            'ALTER TABLE public.%I ALTER COLUMN %I TYPE NUMERIC(%s,%s)',
+            tbl, col, target_precision, target_scale
         );
-        RAISE NOTICE 'Ampliado %.% de (%, %) para (13,3).', tbl, col, current_precision, current_scale;
+        RAISE NOTICE 'Ampliado %.% de (%,%) para (%,%).',
+            tbl, col, current_precision, current_scale, target_precision, target_scale;
     END LOOP;
 END $$;
