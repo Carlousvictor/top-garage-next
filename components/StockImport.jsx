@@ -445,6 +445,7 @@ export default function StockImport({ onEntryCreated }) {
                                 <CurrencyInput
                                     value={freightAmount}
                                     onChange={(n) => setFreightAmount(n)}
+                                    decimals={3}
                                     className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
                                 />
                                 <p className="text-[11px] text-gray-500 mt-1">Rateado proporcional nos custos.</p>
@@ -471,6 +472,7 @@ export default function StockImport({ onEntryCreated }) {
                                     <CurrencyInput
                                         value={discountAmount}
                                         onChange={(n) => setDiscountAmount(n)}
+                                        decimals={3}
                                         className="w-full bg-neutral-900 border border-neutral-700 rounded p-2 text-white text-sm"
                                     />
                                 </div>
@@ -591,6 +593,7 @@ export default function StockImport({ onEntryCreated }) {
                                             <CurrencyInput
                                                 value={item.cost_price}
                                                 onChange={(n) => handleItemChange(index, 'cost_price', n)}
+                                                decimals={3}
                                                 className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-gray-300"
                                             />
                                         </td>
@@ -599,6 +602,7 @@ export default function StockImport({ onEntryCreated }) {
                                                 <CurrencyInput
                                                     value={item.discount_amount || 0}
                                                     onChange={(n) => handleItemChange(index, 'discount_amount', n)}
+                                                    decimals={3}
                                                     className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-red-300"
                                                 />
                                             </td>
@@ -615,6 +619,7 @@ export default function StockImport({ onEntryCreated }) {
                                             <CurrencyInput
                                                 value={item.selling_price}
                                                 onChange={(n) => handleItemChange(index, 'selling_price', n)}
+                                                decimals={3}
                                                 className="bg-neutral-700 rounded px-2 py-1 w-28 text-right text-green-400 font-bold"
                                             />
                                         </td>
@@ -821,6 +826,7 @@ export default function StockImport({ onEntryCreated }) {
                                     <CurrencyInput
                                         value={previewItems[editingItemIndex].cost_price}
                                         onChange={(n) => handleItemChange(editingItemIndex, 'cost_price', n)}
+                                        decimals={3}
                                         className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-white focus:outline-none focus:border-red-500 transition-colors"
                                     />
                                 </div>
@@ -838,6 +844,7 @@ export default function StockImport({ onEntryCreated }) {
                                     <CurrencyInput
                                         value={previewItems[editingItemIndex].selling_price}
                                         onChange={(n) => handleItemChange(editingItemIndex, 'selling_price', n)}
+                                        decimals={3}
                                         className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-3 py-2 text-green-400 font-bold focus:outline-none focus:border-green-500 transition-colors"
                                     />
                                 </div>

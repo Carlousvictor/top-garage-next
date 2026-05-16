@@ -73,19 +73,31 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
     const hasActiveFilters = filterText || filterCategory || filterDateFrom || filterDateTo || filterType
 
     useEffect(() => {
-        if (isFirstLoad && initialTransactions) {
+        // Aguarda tenantId hidratar antes do primeiro fetch. Sem isso, o
+        // primeiro fetch após login (com auth ainda não propagada no client
+        // supabase) retornava vazio via RLS, e só "saindo e entrando" o
+        // usuário conseguia ver as pendências. Agora re-roda quando tenantId
+        // muda de null → uuid.
+        if (isFirstLoad && initialTransactions && activeTab === 'overview') {
             setIsFirstLoad(false)
             return
         }
+        if (!tenantId) return
         fetchTransactions()
-    }, [activeTab])
+    }, [activeTab, tenantId])
 
     const fetchTransactions = async () => {
+        if (!tenantId) return
         setLoading(true)
         try {
+            // Filtro explícito por tenant_id (defesa em profundidade) — não
+            // depende só do RLS. Se a sessão do supabase no client estiver
+            // momentaneamente sem auth (pós-login), pelo menos a query é
+            // bem-formada e RLS continua bloqueando se for outro tenant.
             let query = supabase
                 .from('transactions')
                 .select('*')
+                .eq('tenant_id', tenantId)
                 .order('due_date', { ascending: true })
 
             if (activeTab === 'overview') {
@@ -120,11 +132,12 @@ export default function FinancialDashboard({ initialTransactions, initialSummary
 
     // Separate function to calculate global financial status
     const calculatePendingSummary = async () => {
+        if (!tenantId) return
         // This is a bit expensive, maybe optimize later with RPC
-        const { data: incomeData } = await supabase.from('transactions').select('amount').eq('type', 'income').eq('status', 'paid')
-        const { data: expenseData } = await supabase.from('transactions').select('amount').eq('type', 'expense').eq('status', 'paid')
-        const { data: pendingPayData } = await supabase.from('transactions').select('amount').eq('type', 'expense').eq('status', 'pending')
-        const { data: pendingRecData } = await supabase.from('transactions').select('amount').eq('type', 'income').eq('status', 'pending')
+        const { data: incomeData } = await supabase.from('transactions').select('amount').eq('tenant_id', tenantId).eq('type', 'income').eq('status', 'paid')
+        const { data: expenseData } = await supabase.from('transactions').select('amount').eq('tenant_id', tenantId).eq('type', 'expense').eq('status', 'paid')
+        const { data: pendingPayData } = await supabase.from('transactions').select('amount').eq('tenant_id', tenantId).eq('type', 'expense').eq('status', 'pending')
+        const { data: pendingRecData } = await supabase.from('transactions').select('amount').eq('tenant_id', tenantId).eq('type', 'income').eq('status', 'pending')
 
         const income = incomeData?.reduce((acc, t) => acc + Number(t.amount), 0) || 0
         const expense = expenseData?.reduce((acc, t) => acc + Number(t.amount), 0) || 0

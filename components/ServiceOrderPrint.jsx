@@ -98,9 +98,13 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
         : ''
 
     return (
-        <div className="hidden print:flex flex-col font-sans text-black bg-white p-8 w-full h-full fixed top-0 left-0 z-[9999] print:m-0">
+        <div className="hidden print:flex print:flex-col font-sans text-black bg-white p-8 w-full print:m-0 print:min-h-screen">
 
-            {/* Main Content Wrapper */}
+            {/* Main Content Wrapper — fluxo natural no print: itens, totais e
+                observações seguem em sequência. flex-grow empurra o footer
+                pro fim do conteúdo. Em listas longas, os totais acompanham
+                os itens para a próxima página em vez de sumirem (antes
+                ficava fixed h-full, recortando tudo além da primeira folha). */}
             <div className="flex-grow">
                 {/* Header */}
                 <div className="flex justify-between items-start border-b-2 border-gray-800 pb-2 mb-4">
@@ -216,8 +220,10 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                     </table>
                 </div>
 
-                {/* Totals + Pagamento */}
-                <div className="flex justify-end mb-6">
+                {/* Totals + Pagamento — break-inside-avoid mantém o bloco
+                    inteiro na mesma página; se não couber depois da listagem,
+                    vai inteiro pra próxima página em vez de ser cortado. */}
+                <div className="flex justify-end mb-6 print:break-inside-avoid">
                     <div className="w-1/2 border border-black p-0.5">
                         {/* Breakdown só aparece quando o lado tem valor > 0 — evita
                             "R$ 0,00" pendurado em OS que só tem serviços (caso típico

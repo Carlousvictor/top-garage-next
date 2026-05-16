@@ -6,51 +6,65 @@ import { useState, useEffect, useRef } from 'react'
 // Estado interno = string mascarada pra UI controlada sem trocar caret.
 //
 // Comportamento:
-//  - Aceita só dígitos. Cada dígito é interpretado como centavos (típico de
-//    máscara monetária — usuário não precisa digitar vírgula).
-//  - Backspace remove o último centavo.
+//  - Aceita só dígitos. Cada dígito é interpretado como casa decimal (típico
+//    de máscara monetária — usuário não precisa digitar vírgula).
+//  - Backspace remove o último decimal.
 //  - Quando o pai muda `value` programaticamente (reset de form, recálculo),
 //    o input ressincroniza se o número divergir do texto atual.
 //  - `onChange` recebe Number (não evento).
 //
-// Props extras (className, placeholder, disabled, min, etc.) são spread.
+// Props:
+//  - decimals (default 2): número de casas decimais aceitas. Use 3 em campos
+//    de entrada de nota (preço unitário, frete) que precisam de precisão
+//    maior por causa de notas com 3 casas. Mantém 2 nos demais (PDV, OS).
+//
+// Demais props (className, placeholder, disabled, min, etc.) são spread.
 
-const fmt = (n) => {
+const fmt = (n, decimals = 2) => {
     const num = Number(n) || 0
-    return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    return num.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    })
 }
 
-const parseFromMasked = (txt) => {
+const parseFromMasked = (txt, decimals = 2) => {
     if (!txt) return 0
     const digits = String(txt).replace(/\D/g, '')
     if (!digits) return 0
-    return parseInt(digits, 10) / 100
+    return parseInt(digits, 10) / Math.pow(10, decimals)
 }
 
 export default function CurrencyInput({
     value,
     onChange,
     className = '',
-    placeholder = 'R$ 0,00',
+    placeholder,
     disabled = false,
+    decimals = 2,
     ...rest
 }) {
-    const [text, setText] = useState(() => fmt(value))
+    const placeholderResolved = placeholder ?? (decimals === 3 ? 'R$ 0,000' : 'R$ 0,00')
+    const [text, setText] = useState(() => fmt(value, decimals))
     const lastEmitted = useRef(Number(value) || 0)
 
-    // Ressincroniza quando o pai muda value programaticamente.
+    // Ressincroniza quando o pai muda value programaticamente OU quando
+    // decimals muda em runtime (raro, mas evita inconsistência da máscara).
     useEffect(() => {
         const incoming = Number(value) || 0
-        if (Math.abs(incoming - lastEmitted.current) > 0.005) {
-            setText(fmt(incoming))
+        const tolerance = decimals === 3 ? 0.0005 : 0.005
+        if (Math.abs(incoming - lastEmitted.current) > tolerance) {
+            setText(fmt(incoming, decimals))
             lastEmitted.current = incoming
         }
-    }, [value])
+    }, [value, decimals])
 
     const handleChange = (e) => {
         const raw = e.target.value
-        const num = parseFromMasked(raw)
-        const masked = fmt(num)
+        const num = parseFromMasked(raw, decimals)
+        const masked = fmt(num, decimals)
         setText(masked)
         lastEmitted.current = num
         if (typeof onChange === 'function') onChange(num)
@@ -68,7 +82,7 @@ export default function CurrencyInput({
             value={text}
             onChange={handleChange}
             onFocus={handleFocus}
-            placeholder={placeholder}
+            placeholder={placeholderResolved}
             disabled={disabled}
             className={className}
             {...rest}

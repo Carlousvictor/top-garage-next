@@ -67,7 +67,7 @@ export default function PDVSalePrint({
     const totalSafe = safeNumber(total)
 
     return (
-        <div className="hidden print:flex flex-col font-sans text-black bg-white p-8 w-full h-full fixed top-0 left-0 z-[9999] print:m-0">
+        <div className="hidden print:flex print:flex-col font-sans text-black bg-white p-8 w-full print:m-0 print:min-h-screen">
 
             <div className="flex-grow">
                 {/* Header — mesmo layout da OS */}
@@ -149,8 +149,10 @@ export default function PDVSalePrint({
                     </table>
                 </div>
 
-                {/* Totais + Pagamento */}
-                <div className="flex justify-end mb-6">
+                {/* Totais + Pagamento — break-inside-avoid mantém o bloco
+                    inteiro na mesma página para acompanhar a listagem mesmo
+                    quando há muitos itens. */}
+                <div className="flex justify-end mb-6 print:break-inside-avoid">
                     <div className="w-1/2 border border-black p-0.5">
                         {discPct > 0 && (
                             <>

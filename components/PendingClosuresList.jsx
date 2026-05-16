@@ -8,11 +8,12 @@ import { AlertTriangle, Lock, ArrowLeft, CheckCircle2, CalendarDays } from 'luci
 export default function PendingClosuresList() {
     const supabase = createClient()
     const router = useRouter()
-    const { companyId } = useAuth()
+    const { companyId, loading: authLoading } = useAuth()
 
     const [loading, setLoading] = useState(true)
     const [pendingDays, setPendingDays] = useState([])
     const [closedDays, setClosedDays] = useState([])
+    const [errorMsg, setErrorMsg] = useState('')
 
     const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     const formatDatePt = (dateStr) => {
@@ -23,76 +24,109 @@ export default function PendingClosuresList() {
     const fetchData = async () => {
         if (!companyId) return
         setLoading(true)
+        setErrorMsg('')
 
-        const now = new Date()
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-        const lookback = new Date(today)
-        lookback.setDate(lookback.getDate() - 90)
+        try {
+            const now = new Date()
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+            const lookback = new Date(today)
+            lookback.setDate(lookback.getDate() - 90)
 
-        const lookbackISO = lookback.toISOString()
-        const todayISO = today.toISOString()
+            const lookbackISO = lookback.toISOString()
+            const todayISO = today.toISOString()
 
-        // Get all transactions in window (only past days, not today)
-        const { data: txs } = await supabase
-            .from('transactions')
-            .select('date, amount, type, status')
-            .eq('tenant_id', companyId)
-            .gte('date', lookbackISO)
-            .lt('date', todayISO)
+            // Get all transactions in window (only past days, not today)
+            const { data: txs, error: txErr } = await supabase
+                .from('transactions')
+                .select('date, amount, type, status')
+                .eq('tenant_id', companyId)
+                .gte('date', lookbackISO)
+                .lt('date', todayISO)
+            if (txErr) throw txErr
 
-        const { data: closures } = await supabase
-            .from('daily_closures')
-            .select('closure_date, status, total_income, net_balance')
-            .eq('tenant_id', companyId)
-            .gte('closure_date', lookback.toISOString().substring(0, 10))
+            const { data: closures, error: clErr } = await supabase
+                .from('daily_closures')
+                .select('closure_date, status, total_income, net_balance')
+                .eq('tenant_id', companyId)
+                .gte('closure_date', lookback.toISOString().substring(0, 10))
+            if (clErr) throw clErr
 
-        const closedMap = new Map(
-            (closures || []).filter(c => c.status === 'closed').map(c => [c.closure_date, c])
-        )
+            const closedMap = new Map(
+                (closures || []).filter(c => c.status === 'closed').map(c => [c.closure_date, c])
+            )
 
-        // Aggregate by day (local)
-        const byDay = new Map()
-        for (const t of (txs || [])) {
-            if (t.status !== 'paid') continue
-            const d = new Date(t.date)
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-            if (!byDay.has(key)) byDay.set(key, { income: 0, expense: 0 })
-            const cur = byDay.get(key)
-            if (t.type === 'income') cur.income += Number(t.amount)
-            else if (t.type === 'expense') cur.expense += Number(t.amount)
-        }
-
-        const pending = []
-        const closed = []
-        for (const [day, totals] of byDay.entries()) {
-            const entry = {
-                date: day,
-                totalIncome: totals.income,
-                totalExpense: totals.expense,
-                net: totals.income - totals.expense
+            // Aggregate by day (local)
+            const byDay = new Map()
+            for (const t of (txs || [])) {
+                if (t.status !== 'paid') continue
+                const d = new Date(t.date)
+                const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                if (!byDay.has(key)) byDay.set(key, { income: 0, expense: 0 })
+                const cur = byDay.get(key)
+                if (t.type === 'income') cur.income += Number(t.amount)
+                else if (t.type === 'expense') cur.expense += Number(t.amount)
             }
-            if (closedMap.has(day)) {
-                const c = closedMap.get(day)
-                closed.push({ ...entry, closure: c })
-            } else {
-                pending.push(entry)
+
+            const pending = []
+            const closed = []
+            for (const [day, totals] of byDay.entries()) {
+                const entry = {
+                    date: day,
+                    totalIncome: totals.income,
+                    totalExpense: totals.expense,
+                    net: totals.income - totals.expense
+                }
+                if (closedMap.has(day)) {
+                    const c = closedMap.get(day)
+                    closed.push({ ...entry, closure: c })
+                } else {
+                    pending.push(entry)
+                }
             }
+
+            pending.sort((a, b) => b.date.localeCompare(a.date))
+            closed.sort((a, b) => b.date.localeCompare(a.date))
+
+            setPendingDays(pending)
+            setClosedDays(closed)
+        } catch (err) {
+            console.error('Erro ao carregar pendências:', err)
+            setErrorMsg(err?.message || 'Falha ao carregar pendências.')
+        } finally {
+            setLoading(false)
         }
-
-        pending.sort((a, b) => b.date.localeCompare(a.date))
-        closed.sort((a, b) => b.date.localeCompare(a.date))
-
-        setPendingDays(pending)
-        setClosedDays(closed)
-        setLoading(false)
     }
 
     useEffect(() => {
-        if (companyId) fetchData()
-    }, [companyId])
+        // Aguarda auth resolver antes de decidir. Sem isso, se companyId
+        // demorar a hidratar, o loading=true ficava eterno. Quando auth
+        // termina sem tenant (caso raro de profile sem tenant_id), libera
+        // o loading com mensagem clara em vez de skeleton infinito.
+        if (authLoading) return
+        if (!companyId) {
+            setErrorMsg('Empresa não identificada na sessão. Tente recarregar a página.')
+            setLoading(false)
+            return
+        }
+        fetchData()
+    }, [companyId, authLoading])
 
     if (loading) {
         return <div className="p-8 text-center text-gray-400 animate-pulse">Carregando pendências...</div>
+    }
+
+    if (errorMsg) {
+        return (
+            <div className="p-8 text-center">
+                <p className="text-red-400 mb-3">{errorMsg}</p>
+                <button
+                    onClick={() => router.push('/financial/daily')}
+                    className="text-sm text-gray-300 underline"
+                >
+                    Voltar ao movimento de hoje
+                </button>
+            </div>
+        )
     }
 
     return (

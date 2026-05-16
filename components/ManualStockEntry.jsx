@@ -408,6 +408,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                         <CurrencyInput
                             value={freightAmount}
                             onChange={(n) => setFreightAmount(n)}
+                            decimals={3}
                             className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
                         />
                         <p className="text-[11px] text-gray-500 mt-1">Rateado proporcionalmente nos custos dos itens.</p>
@@ -436,6 +437,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                             <CurrencyInput
                                 value={discountAmount}
                                 onChange={(n) => setDiscountAmount(n)}
+                                decimals={3}
                                 className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
                             />
                         </div>
@@ -541,6 +543,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 <CurrencyInput
                                                     value={it.cost_price}
                                                     onChange={(n) => handleUpdateItem(it.id, 'cost_price', n)}
+                                                    decimals={3}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
@@ -557,6 +560,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                 <CurrencyInput
                                                     value={it.selling_price}
                                                     onChange={(n) => handleUpdateItem(it.id, 'selling_price', n)}
+                                                    decimals={3}
                                                     className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                 />
                                             </td>
@@ -565,6 +569,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                                     <CurrencyInput
                                                         value={it.discount_amount || 0}
                                                         onChange={(n) => handleUpdateItem(it.id, 'discount_amount', n)}
+                                                        decimals={3}
                                                         className="w-full bg-black border border-neutral-700 rounded p-1.5 text-white text-right"
                                                     />
                                                 </td>
@@ -702,6 +707,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                 <CurrencyInput
                                     value={p.amount}
                                     onChange={(n) => handleUpdateInstallment(p.id, 'amount', n)}
+                                    decimals={3}
                                     className="col-span-3 bg-neutral-950 border border-neutral-700 rounded p-1.5 text-white text-sm text-right"
                                 />
                                 <select

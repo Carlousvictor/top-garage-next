@@ -1,8 +1,41 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient as createServiceClient } from '@supabase/supabase-js'
+import { createClient } from '@/utils/supabase/server'
 
+// ATENÇÃO: esta página usa SERVICE_ROLE_KEY e expõe dados crus de TODOS
+// os tenants. Por isso é blindada com checagem de role=super_admin antes
+// de qualquer query — usuários comuns de tenants clientes recebem 403 e
+// nunca veem dados de outras empresas. Mantida como ferramenta de
+// diagnóstico do dono do sistema (super_admin), nunca pra clientes finais.
 export default async function DebugPage() {
-    // Override with a service role key to bypass RLS and see reality
-    const supabase = createClient(
+    const userClient = await createClient()
+    const { data: { user } } = await userClient.auth.getUser()
+    if (!user) {
+        return <div className="p-10 bg-black text-white min-h-screen font-mono">Sem sessão.</div>
+    }
+
+    const { data: profile } = await userClient
+        .from('profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+    const { data: profileById } = profile?.role ? { data: profile } : await userClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
+    const role = (profile?.role ?? profileById?.role) || null
+
+    if (role !== 'super_admin') {
+        return (
+            <div className="p-10 bg-black text-white min-h-screen font-mono">
+                <h1 className="text-xl font-bold text-red-500">Acesso negado</h1>
+                <p className="mt-2 text-gray-400">Esta página é restrita a super administradores.</p>
+            </div>
+        )
+    }
+
+    // Só super_admin chega aqui — dump cross-tenant via service role
+    const supabase = createServiceClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL,
         process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     )

@@ -19,6 +19,13 @@
     margin: 0;
     padding: 0;
   }
+  /* Print multi-page: tabelas longas (OS/PDV com muitos itens) precisam quebrar
+     entre páginas sem cortar linhas no meio. thead repete em cada página, tr
+     não quebra no meio, e o container de impressão não recorta nada. */
+    table { break-inside: auto; }
+    tr { break-inside: avoid; break-after: auto; }
+    thead { display: table-header-group; }
+    tfoot { display: table-footer-group; }
 }
 
 @theme inline {
