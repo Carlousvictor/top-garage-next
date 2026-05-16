@@ -749,6 +749,9 @@ export default function StockImport({ onEntryCreated }) {
                         it.linked_product_ids = linked_product_ids || [];
                         if (link_product_id) {
                             it.matchedProductName = link_product_name;
+                            // Replica descrição do produto vinculado pra linha — padroniza
+                            // entre NF do fornecedor e cadastro do estoque.
+                            if (link_product_name) it.name = link_product_name;
                             // Marca como vínculo manual quando difere do auto-match.
                             if (it.matchStatus !== 'matched_ean' && it.matchStatus !== 'matched_sku') {
                                 it.matchStatus = 'matched_manual';

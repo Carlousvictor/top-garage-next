@@ -204,6 +204,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 ...it,
                 link_product_id: it.suggestion.id,
                 link_product_name: it.suggestion.name,
+                // Padroniza descrição com o cadastro do estoque ao vincular —
+                // evita divergência entre o que veio da NF e o que tá registrado.
+                name: it.suggestion.name || it.name,
                 suggestion: null
             }
         }))
@@ -822,6 +825,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                 ...x,
                                 link_product_id: link_product_id || null,
                                 link_product_name: link_product_id ? link_product_name : null,
+                                // Replica descrição do produto vinculado pra linha — operador
+                                // pediu padronização entre NF (que vem do fornecedor) e cadastro
+                                // do estoque. Só sobrescreve quando há vínculo; ao desfazer mantém
+                                // o name atual pra não perder o que o usuário digitou.
+                                name: link_product_id && link_product_name ? link_product_name : x.name,
                                 linked_product_ids: linked_product_ids || [],
                                 suggestion: null
                             } : x))
