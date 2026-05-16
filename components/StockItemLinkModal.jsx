@@ -58,7 +58,6 @@ export default function StockItemLinkModal({
                 const json = await res.json().catch(() => ({}))
                 if (res.ok) {
                     setResults(json.products || [])
-                    // Indexa labels novos pra chips
                     setEquivLabels(prev => {
                         const next = { ...prev }
                         for (const p of json.products || []) {

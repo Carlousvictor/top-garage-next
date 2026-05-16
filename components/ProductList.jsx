@@ -27,6 +27,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Produto selecionado na busca. Quando preenchido, a tabela mostra esse produto
     // mais todos os equivalentes (linked_products). Quando null, mostra tudo.
     const [searchProduct, setSearchProduct] = useState(null)
+    // Busca por texto livre (substring em name/sku/ean). Ativa quando o operador
+    // digita um termo e aperta "Buscar" ou Enter — lista TODOS os produtos que
+    // casam, sem precisar selecionar do dropdown.
+    const [searchText, setSearchText] = useState('')
+    const [activeSearchText, setActiveSearchText] = useState('')
     // Filtro "estoque baixo": ativado via toggle ou via ?filter=low-stock (vindo do dashboard).
     // Mesmo critério usado em app/page.js: quantity <= (min_quantity || 0).
     const [lowStockOnly, setLowStockOnly] = useState(searchParams.get('filter') === 'low-stock')
@@ -312,6 +317,16 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 }
             }
             base = products.filter(p => p.id === baseId || equivIds.has(p.id))
+        } else if (activeSearchText) {
+            // Busca por texto livre (botão Buscar / Enter): substring em
+            // name, sku ou ean. Lista TODOS que casam — operador não precisa
+            // escolher do dropdown.
+            const q = activeSearchText.toLowerCase()
+            base = products.filter(p =>
+                p.name?.toLowerCase().includes(q) ||
+                p.sku?.toLowerCase().includes(q) ||
+                p.ean?.toLowerCase().includes(q)
+            )
         }
         if (lowStockOnly) base = base.filter(isLowStock)
         return base
@@ -432,14 +447,54 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 print:hidden">
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <h2 className="text-2xl font-bold text-white">Gestão de Estoque</h2>
-                <div className="flex gap-2 w-full md:w-auto items-center">
+                <div className="flex gap-2 w-full md:w-auto items-center flex-wrap">
+                    {/* Busca por texto + botão — lista TODOS os produtos cuja
+                        descrição/SKU/EAN contém o termo. Ex: digitar "OLEO" +
+                        Buscar mostra todos os óleos do estoque. */}
+                    <div className="flex items-center gap-1">
+                        <input
+                            type="text"
+                            value={searchText}
+                            onChange={(e) => setSearchText(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    setActiveSearchText(searchText.trim())
+                                    setSearchProduct(null)
+                                }
+                            }}
+                            placeholder="Ex: OLEO, FILTRO..."
+                            className="w-44 bg-black border border-neutral-700 rounded-lg px-3 py-2 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-red-500"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setActiveSearchText(searchText.trim())
+                                setSearchProduct(null)
+                            }}
+                            className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg whitespace-nowrap"
+                            title="Lista todos os produtos cuja descrição/SKU/EAN contém o termo"
+                        >
+                            Buscar
+                        </button>
+                        {activeSearchText && (
+                            <button
+                                type="button"
+                                onClick={() => { setActiveSearchText(''); setSearchText('') }}
+                                className="px-2 py-2 text-gray-400 hover:text-white text-xs underline whitespace-nowrap"
+                                title="Limpar busca por texto"
+                            >
+                                limpar
+                            </button>
+                        )}
+                    </div>
                     <div className="w-full md:w-96">
                         <Select
                             instanceId="stock-search"
                             isClearable
                             placeholder="Buscar por nome, SKU ou EAN..."
                             value={searchProduct}
-                            onChange={(opt) => setSearchProduct(opt)}
+                            onChange={(opt) => { setSearchProduct(opt); setActiveSearchText('') }}
                             options={searchOptions}
                             filterOption={filterSearchOption}
                             formatOptionLabel={(opt) => (
@@ -541,9 +596,11 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         <tbody>
                             {filteredProducts.length === 0 ? (
                                 <tr><td colSpan="7" className="text-center py-4">
-                                    {lowStockOnly
-                                        ? 'Nenhum produto com estoque baixo.'
-                                        : 'Nenhum produto encontrado.'}
+                                    {activeSearchText
+                                        ? `Nenhum produto encontrado para "${activeSearchText}".`
+                                        : lowStockOnly
+                                            ? 'Nenhum produto com estoque baixo.'
+                                            : 'Nenhum produto encontrado.'}
                                 </td></tr>
                             ) : (
                                 productPagination.paginatedItems.map((product) => (

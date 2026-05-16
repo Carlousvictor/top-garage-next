@@ -68,11 +68,24 @@ export default function ManualStockEntry({ onEntryCreated }) {
     }
 
     useEffect(() => {
+        if (!tenantId) return
         const fetchSuppliers = async () => {
-            const { data } = await supabase.from('suppliers').select('id, name, cnpj').order('name')
+            // Filtro explícito por tenant_id (defesa em profundidade junto com RLS).
+            // Sem isso, sessão client-side ainda nao hidratada retornava lista vazia
+            // silenciosamente e o dropdown de fornecedor ficava sem opcoes.
+            const { data, error } = await supabase
+                .from('suppliers')
+                .select('id, name, cnpj')
+                .eq('tenant_id', tenantId)
+                .order('name')
+            if (error) {
+                console.error('Erro ao carregar fornecedores:', error)
+                addLog('Falha ao carregar fornecedores: ' + error.message, 'error')
+                return
+            }
             setSuppliers(data || [])
         }
-        if (tenantId) fetchSuppliers()
+        fetchSuppliers()
     }, [tenantId])
 
     // Carrega cache de produtos pro auto-match. Server-side via API pra evitar
