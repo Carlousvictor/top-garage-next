@@ -973,6 +973,7 @@ export default function ServiceOrderForm({
                                         )
                                     }}
                                     formatOptionLabel={(opt, { context }) => {
+                                        if (opt.__isNew__) return <span>{opt.label}</span>
                                         if (context === 'value') return <span>{opt.name}</span>
                                         return (
                                             <div className="flex items-center justify-between gap-2">
