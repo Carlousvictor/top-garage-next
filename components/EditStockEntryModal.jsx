@@ -1,7 +1,5 @@
 "use client"
 import { useEffect, useState } from 'react'
-import { createClient } from '../utils/supabase/client'
-import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { X, Plus, Trash2, FileText, Save, AlertCircle } from 'lucide-react'
 import CurrencyInput from './CurrencyInput'
@@ -15,8 +13,6 @@ import CurrencyInput from './CurrencyInput'
 const fmt = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
 export default function EditStockEntryModal({ entryId, isOpen, onClose, onSaved }) {
-    const supabase = createClient()
-    const { tenantId } = useAuth()
     const toast = useToast()
 
     const [loading, setLoading] = useState(true)
@@ -41,23 +37,30 @@ export default function EditStockEntryModal({ entryId, isOpen, onClose, onSaved 
     const [xmlKey, setXmlKey] = useState(null)
 
     useEffect(() => {
-        if (!isOpen || !entryId || !tenantId) return
+        if (!isOpen || !entryId) return
         let cancelled = false
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 20000)
         const load = async () => {
             setLoading(true)
             setLoadError(null)
             try {
-                const [entryRes, supRes] = await Promise.all([
-                    fetch(`/api/stock/entries/${entryId}`, { credentials: 'include', cache: 'no-store' }),
-                    supabase.from('suppliers').select('id, name, cnpj').eq('tenant_id', tenantId).order('name')
-                ])
+                // Tudo via server-side num único GET — entry + items +
+                // transactions + suppliers. Sem chamadas supabase.from()
+                // client-side aqui pra evitar trava de token stale (mesmo
+                // motivo do fix em StockImport/preview).
+                const entryRes = await fetch(`/api/stock/entries/${entryId}`, {
+                    credentials: 'include',
+                    cache: 'no-store',
+                    signal: controller.signal
+                })
                 const entryJson = await entryRes.json().catch(() => ({}))
                 if (!entryRes.ok) throw new Error(entryJson.error || `HTTP ${entryRes.status}`)
                 if (cancelled) return
 
-                const { entry, items: entryItems, transactions } = entryJson
+                const { entry, items: entryItems, transactions, suppliers: srvSuppliers } = entryJson
 
-                setSuppliers(supRes.data || [])
+                setSuppliers(srvSuppliers || [])
                 setSupplierId(entry.supplier_id || '')
                 setInvoiceNumber(entry.invoice_number || '')
                 setEmissionDate(entry.emission_date || '')
@@ -101,14 +104,24 @@ export default function EditStockEntryModal({ entryId, isOpen, onClose, onSaved 
                     setInstallments([])
                 }
             } catch (err) {
-                if (!cancelled) setLoadError(err.message)
+                if (!cancelled) {
+                    const msg = err?.name === 'AbortError'
+                        ? 'Tempo limite (20s) ao carregar a NF. Tente novamente.'
+                        : (err?.message || 'Erro desconhecido.')
+                    setLoadError(msg)
+                }
             } finally {
+                clearTimeout(timeoutId)
                 if (!cancelled) setLoading(false)
             }
         }
         load()
-        return () => { cancelled = true }
-    }, [isOpen, entryId, tenantId])
+        return () => {
+            cancelled = true
+            clearTimeout(timeoutId)
+            controller.abort()
+        }
+    }, [isOpen, entryId])
 
     const handleItemChange = (rowKey, field, value) => {
         setItems(prev => prev.map(it => {

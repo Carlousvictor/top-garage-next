@@ -72,7 +72,21 @@ export async function GET(_request, { params }) {
         .eq('tenant_id', tenantId)
         .order('due_date', { ascending: true, nullsFirst: false })
 
-    return NextResponse.json({ entry, items: items || [], transactions: txs || [] })
+    // Inclui suppliers no payload para o modal não precisar de uma chamada
+    // client-side separada — supabase.from(...) no browser trava com token
+    // stale, prendendo o Promise.all do modal em "Carregando..." indefinido.
+    const { data: suppliers } = await supabase
+        .from('suppliers')
+        .select('id, name, cnpj')
+        .eq('tenant_id', tenantId)
+        .order('name')
+
+    return NextResponse.json({
+        entry,
+        items: items || [],
+        transactions: txs || [],
+        suppliers: suppliers || []
+    })
 }
 
 export async function PUT(request, { params }) {
