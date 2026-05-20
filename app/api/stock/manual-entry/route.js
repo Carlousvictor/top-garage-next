@@ -146,39 +146,51 @@ export async function POST(request) {
             const finalSellingPrice = round2(finalUnitCost * (1 + margin / 100))
 
             let existingProd = null
+            // Quando link_product_id está setado, o operador escolheu
+            // EXPLICITAMENTE somar o saldo a esse produto. Se não acharmos
+            // a row, falhamos hard — nunca caímos pra fallback nem
+            // criamos produto novo (era exatamente isso que gerava
+            // duplicidade quando o picker "Adicionar a item existente"
+            // era usado).
+            const hasExplicitLink = it.link_product_id !== null && it.link_product_id !== undefined && it.link_product_id !== ''
 
-            // (a) Override explícito: operador vinculou via picker UI.
-            if (it.link_product_id) {
-                const { data } = await supabase
+            if (hasExplicitLink) {
+                const linkId = typeof it.link_product_id === 'string'
+                    ? (/^\d+$/.test(it.link_product_id) ? Number(it.link_product_id) : it.link_product_id)
+                    : it.link_product_id
+                const { data, error: selErr } = await supabase
                     .from('products')
                     .select('id, quantity, ean')
                     .eq('tenant_id', tenantId)
-                    .eq('id', it.link_product_id)
+                    .eq('id', linkId)
                     .maybeSingle()
+                if (selErr) throw new Error(`Erro localizando produto vinculado: ${selErr.message}`)
+                if (!data) {
+                    throw new Error(`Produto vinculado (id=${linkId}) não encontrado neste tenant. Reabra "Adicionar a item existente" e selecione o item novamente.`)
+                }
                 existingProd = data
-            }
-
-            // (b) Match automático por EAN (digitado manualmente).
-            if (!existingProd && it.ean?.trim()) {
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, quantity, ean')
-                    .eq('tenant_id', tenantId)
-                    .eq('ean', it.ean.trim())
-                    .maybeSingle()
-                existingProd = data
-            }
-
-            // (c) Match automático por SKU + fornecedor.
-            if (!existingProd && it.sku?.trim()) {
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, quantity, ean')
-                    .eq('tenant_id', tenantId)
-                    .eq('sku', it.sku.trim())
-                    .eq('supplier_id', supplierId)
-                    .maybeSingle()
-                existingProd = data
+            } else {
+                // (b) Match automático por EAN (digitado manualmente).
+                if (it.ean?.trim()) {
+                    const { data } = await supabase
+                        .from('products')
+                        .select('id, quantity, ean')
+                        .eq('tenant_id', tenantId)
+                        .eq('ean', it.ean.trim())
+                        .maybeSingle()
+                    existingProd = data
+                }
+                // (c) Match automático por SKU + fornecedor.
+                if (!existingProd && it.sku?.trim()) {
+                    const { data } = await supabase
+                        .from('products')
+                        .select('id, quantity, ean')
+                        .eq('tenant_id', tenantId)
+                        .eq('sku', it.sku.trim())
+                        .eq('supplier_id', supplierId)
+                        .maybeSingle()
+                    existingProd = data
+                }
             }
 
             let finalProductId

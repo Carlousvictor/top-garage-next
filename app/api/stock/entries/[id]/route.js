@@ -254,42 +254,48 @@ export async function PUT(request, { params }) {
             const finalSellingPrice = round2(finalUnitCost * (1 + margin / 100))
 
             let existingProd = null
-            if (it.product_id) {
-                const { data } = await supabase
+            // No PUT, product_id já vem da row existente em stock_entry_items
+            // (linha que já estava vinculada antes da edição). Se está
+            // setado, é um contrato HARD: tem que casar — sem fallback que
+            // crie duplicidade.
+            const explicitId = it.product_id ?? it.link_product_id
+            const hasExplicitLink = explicitId !== null && explicitId !== undefined && explicitId !== ''
+
+            if (hasExplicitLink) {
+                const linkId = typeof explicitId === 'string'
+                    ? (/^\d+$/.test(explicitId) ? Number(explicitId) : explicitId)
+                    : explicitId
+                const { data, error: selErr } = await supabase
                     .from('products')
                     .select('id, quantity, ean')
                     .eq('tenant_id', tenantId)
-                    .eq('id', it.product_id)
+                    .eq('id', linkId)
                     .maybeSingle()
+                if (selErr) throw new Error(`Erro localizando produto vinculado: ${selErr.message}`)
+                if (!data) {
+                    throw new Error(`Produto vinculado (id=${linkId}) não encontrado neste tenant para o item "${it.name}".`)
+                }
                 existingProd = data
-            }
-            if (!existingProd && it.link_product_id) {
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, quantity, ean')
-                    .eq('tenant_id', tenantId)
-                    .eq('id', it.link_product_id)
-                    .maybeSingle()
-                existingProd = data
-            }
-            if (!existingProd && it.ean?.trim()) {
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, quantity, ean')
-                    .eq('tenant_id', tenantId)
-                    .eq('ean', it.ean.trim())
-                    .maybeSingle()
-                existingProd = data
-            }
-            if (!existingProd && it.sku?.trim()) {
-                const { data } = await supabase
-                    .from('products')
-                    .select('id, quantity, ean')
-                    .eq('tenant_id', tenantId)
-                    .eq('sku', it.sku.trim())
-                    .eq('supplier_id', supplierId)
-                    .maybeSingle()
-                existingProd = data
+            } else {
+                if (it.ean?.trim()) {
+                    const { data } = await supabase
+                        .from('products')
+                        .select('id, quantity, ean')
+                        .eq('tenant_id', tenantId)
+                        .eq('ean', it.ean.trim())
+                        .maybeSingle()
+                    existingProd = data
+                }
+                if (!existingProd && it.sku?.trim()) {
+                    const { data } = await supabase
+                        .from('products')
+                        .select('id, quantity, ean')
+                        .eq('tenant_id', tenantId)
+                        .eq('sku', it.sku.trim())
+                        .eq('supplier_id', supplierId)
+                        .maybeSingle()
+                    existingProd = data
+                }
             }
 
             let finalProductId
