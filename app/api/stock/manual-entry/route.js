@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 // Entrada manual de NF, server-side. Substitui a versão client-side que
 // disparava AbortError ("signal is aborted without reason") quando a sessão
@@ -307,6 +308,13 @@ export async function POST(request) {
 
         const { error: txErr } = await supabase.from('transactions').insert(txRows)
         if (txErr) throw new Error(`Erro registrar transação: ${txErr.message}`)
+
+        // Invalida o cache SSR das telas que dependem dos produtos atualizados.
+        // Sem isso, os itens entravam no banco mas a tela /stock continuava
+        // mostrando o snapshot anterior — sintoma reportado pelo operador
+        // como "não está adicionando os itens no estoque".
+        revalidatePath('/stock')
+        revalidatePath('/import')
 
         return NextResponse.json({
             success: true,

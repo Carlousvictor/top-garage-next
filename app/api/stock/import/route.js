@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 async function getTenantId(supabase, user) {
     const { data: profile } = await supabase
@@ -311,6 +312,13 @@ export async function POST(request) {
 
         const { error: txError } = await supabase.from('transactions').insert(transactionRows);
         if (txError) throw new Error(`Erro registrar transação: ${txError.message}`);
+
+        // Invalida o cache SSR das telas que dependem dos produtos atualizados.
+        // Sem isso, os itens entravam no banco mas a tela /stock continuava
+        // mostrando o snapshot anterior — sintoma reportado pelo operador
+        // como "não está adicionando os itens no estoque".
+        revalidatePath('/stock')
+        revalidatePath('/import')
 
         return NextResponse.json({ success: true, transactionCount: transactionRows.length })
 

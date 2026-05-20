@@ -1,11 +1,13 @@
 "use client"
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import StockImport from '@/components/StockImport'
 import ManualStockEntry from '@/components/ManualStockEntry'
 import StockEntriesList from '@/components/StockEntriesList'
 import { FileText, FileCode2, History } from 'lucide-react'
 
 export default function ImportPage() {
+    const router = useRouter()
     const [mode, setMode] = useState('xml') // 'xml' | 'manual' | 'list'
     // Incrementado quando uma entrada é gravada com sucesso (XML ou manual).
     // O StockEntriesList observa isso pra refazer o fetch sem depender só
@@ -16,6 +18,11 @@ export default function ImportPage() {
     const handleEntryCreated = () => {
         setRefreshTrigger(t => t + 1)
         setMode('list')
+        // Limpa o router cache do Next pra que, ao navegar pra /stock,
+        // o operador veja o produto recém-criado/atualizado. Sem isso o
+        // App Router servia o snapshot anterior e o lançamento da NF
+        // parecia "sumir" do estoque até reload manual.
+        router.refresh()
     }
 
     return (

@@ -2,10 +2,17 @@ import { Suspense } from 'react'
 import { createClient } from '@/utils/supabase/server'
 import ProductList from '@/components/ProductList'
 
+// Render server-side em toda visita: sem isso, depois de lançar uma NF
+// (XML ou manual) os produtos recém-inseridos não apareciam porque o
+// Next servia o snapshot SSR cacheado. revalidatePath('/stock') no
+// final do POST de entrada complementa, mas force-dynamic é o que
+// garante consistência também quando o operador navega por links.
+export const dynamic = 'force-dynamic'
+
 async function getTenantId(supabase, user) {
-    const { data: p } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).single()
+    const { data: p } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
     if (p?.tenant_id) return p.tenant_id
-    const { data: p2 } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()
+    const { data: p2 } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
     return p2?.tenant_id ?? null
 }
 
