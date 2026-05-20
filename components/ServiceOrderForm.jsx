@@ -991,6 +991,19 @@ export default function ServiceOrderForm({
                                     onCreateOption={(input) => {
                                         handleAddCustomItem('product', input)
                                         setSelectedProduct('')
+                                        setProductSearchInput('')
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key !== 'Enter') return
+                                        const input = productSearchInput.trim()
+                                        if (!input) return
+                                        const exact = products.find(p => p.name?.toLowerCase() === input.toLowerCase())
+                                        if (exact) return
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleAddCustomItem('product', input)
+                                        setSelectedProduct('')
+                                        setProductSearchInput('')
                                     }}
                                     styles={selectStyles}
                                 />
@@ -1041,6 +1054,19 @@ export default function ServiceOrderForm({
                                     onCreateOption={(input) => {
                                         handleAddCustomItem('service', input)
                                         setSelectedService('')
+                                        setServiceSearchInput('')
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key !== 'Enter') return
+                                        const input = serviceSearchInput.trim()
+                                        if (!input) return
+                                        const exact = services.find(s => s.name?.toLowerCase() === input.toLowerCase())
+                                        if (exact) return
+                                        e.preventDefault()
+                                        e.stopPropagation()
+                                        handleAddCustomItem('service', input)
+                                        setSelectedService('')
+                                        setServiceSearchInput('')
                                     }}
                                     styles={selectStyles}
                                 />
