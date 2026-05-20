@@ -123,9 +123,13 @@ export default function ServiceOrderForm({
     const [isProductModalOpen, setIsProductModalOpen] = useState(false)
     const [productModalInitialName, setProductModalInitialName] = useState('')
     const [productSearchInput, setProductSearchInput] = useState('')
+    const [productAvulsoMode, setProductAvulsoMode] = useState(false)
+    const [productAvulsoText, setProductAvulsoText] = useState('')
     const [isServiceModalOpen, setIsServiceModalOpen] = useState(false)
     const [serviceModalInitialName, setServiceModalInitialName] = useState('')
     const [serviceSearchInput, setServiceSearchInput] = useState('')
+    const [serviceAvulsoMode, setServiceAvulsoMode] = useState(false)
+    const [serviceAvulsoText, setServiceAvulsoText] = useState('')
     const [selectedVehicle, setSelectedVehicle] = useState(null)
     const [vehiclesLoading, setVehiclesLoading] = useState(false)
     // Tracks whether this is the initial mount (edit mode) vs a user-driven client change.
@@ -939,8 +943,40 @@ export default function ServiceOrderForm({
                             </p>
                         </div>
 
+                        <div className="flex items-center gap-2 mb-2">
+                            <label className="flex items-center gap-2 text-xs text-gray-300 select-none cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={productAvulsoMode}
+                                    onChange={(e) => {
+                                        setProductAvulsoMode(e.target.checked)
+                                        setProductAvulsoText('')
+                                    }}
+                                    className="accent-red-600"
+                                />
+                                Produto avulso (digitar e Enter)
+                            </label>
+                        </div>
                         <div className="flex gap-2 mb-4">
                             <div className="flex-1">
+                                {productAvulsoMode ? (
+                                    <input
+                                        type="text"
+                                        value={productAvulsoText}
+                                        onChange={(e) => setProductAvulsoText(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key !== 'Enter') return
+                                            const input = productAvulsoText.trim()
+                                            if (!input) return
+                                            e.preventDefault()
+                                            handleAddCustomItem('product', input)
+                                            setProductAvulsoText('')
+                                        }}
+                                        placeholder="Digite o nome do produto avulso e tecle Enter"
+                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                        autoFocus
+                                    />
+                                ) : (
                                 <CreatableSelect
                                     instanceId="os-product-select"
                                     isClearable
@@ -1007,7 +1043,22 @@ export default function ServiceOrderForm({
                                     }}
                                     styles={selectStyles}
                                 />
+                                )}
                             </div>
+                            {productAvulsoMode ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const input = productAvulsoText.trim()
+                                        if (!input) return
+                                        handleAddCustomItem('product', input)
+                                        setProductAvulsoText('')
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
+                                >
+                                    Adicionar avulso
+                                </button>
+                            ) : (
                             <button
                                 type="button"
                                 onClick={() => handleAddItem('product')}
@@ -1015,6 +1066,7 @@ export default function ServiceOrderForm({
                             >
                                 + Prod
                             </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => {
@@ -1028,8 +1080,40 @@ export default function ServiceOrderForm({
                             </button>
                         </div>
 
+                        <div className="flex items-center gap-2 mb-2">
+                            <label className="flex items-center gap-2 text-xs text-gray-300 select-none cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={serviceAvulsoMode}
+                                    onChange={(e) => {
+                                        setServiceAvulsoMode(e.target.checked)
+                                        setServiceAvulsoText('')
+                                    }}
+                                    className="accent-red-600"
+                                />
+                                Serviço avulso (digitar e Enter)
+                            </label>
+                        </div>
                         <div className="flex gap-2 mb-4">
                             <div className="flex-1">
+                                {serviceAvulsoMode ? (
+                                    <input
+                                        type="text"
+                                        value={serviceAvulsoText}
+                                        onChange={(e) => setServiceAvulsoText(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key !== 'Enter') return
+                                            const input = serviceAvulsoText.trim()
+                                            if (!input) return
+                                            e.preventDefault()
+                                            handleAddCustomItem('service', input)
+                                            setServiceAvulsoText('')
+                                        }}
+                                        placeholder="Digite o nome do serviço avulso e tecle Enter"
+                                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5"
+                                        autoFocus
+                                    />
+                                ) : (
                                 <CreatableSelect
                                     instanceId="os-service-select"
                                     isClearable
@@ -1070,7 +1154,22 @@ export default function ServiceOrderForm({
                                     }}
                                     styles={selectStyles}
                                 />
+                                )}
                             </div>
+                            {serviceAvulsoMode ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const input = serviceAvulsoText.trim()
+                                        if (!input) return
+                                        handleAddCustomItem('service', input)
+                                        setServiceAvulsoText('')
+                                    }}
+                                    className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap"
+                                >
+                                    Adicionar avulso
+                                </button>
+                            ) : (
                             <button
                                 type="button"
                                 onClick={() => handleAddItem('service')}
@@ -1078,6 +1177,7 @@ export default function ServiceOrderForm({
                             >
                                 + Serv
                             </button>
+                            )}
                             <button
                                 type="button"
                                 onClick={() => {
