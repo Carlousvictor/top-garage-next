@@ -963,6 +963,7 @@ export default function ServiceOrderForm({
                                         price: p.selling_price
                                     }))}
                                     filterOption={(option, input) => {
+                                        if (option.data.__isNew__) return true
                                         if (!input) return true
                                         const q = input.toLowerCase()
                                         return (
