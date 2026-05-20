@@ -179,8 +179,20 @@ export async function POST(request) {
                 if (item.ean && !existingProd.ean) {
                     updatePayload.ean = item.ean;
                 }
-                const { error: updErr } = await supabase.from('products').update(updatePayload).eq('id', existingProd.id);
+                // Verifica explicitamente que a UPDATE atingiu a linha: sem o
+                // .select() Supabase não devolve rowCount e uma RLS bloqueando
+                // WITH CHECK passava silenciosamente (qty congelada). Isso
+                // causava o sintoma "NF entrou mas quantidades não constam".
+                const { data: updated, error: updErr } = await supabase
+                    .from('products')
+                    .update(updatePayload)
+                    .eq('id', existingProd.id)
+                    .eq('tenant_id', tenantId)
+                    .select('id, quantity');
                 if (updErr) throw new Error(`Erro atualizar produto: ${updErr.message}`);
+                if (!updated || updated.length === 0) {
+                    throw new Error(`Falha ao atualizar produto "${item.name}" — quantidade não foi gravada. Verifique permissões (RLS) ou tenant.`);
+                }
                 finalProductId = existingProd.id;
             } else {
                 const { data: newProd, error: insErr } = await supabase.from('products').insert([{

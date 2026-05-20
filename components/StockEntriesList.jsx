@@ -4,8 +4,9 @@ import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
-import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck, RefreshCw } from 'lucide-react'
+import { Trash2, FileText, ChevronDown, ChevronUp, AlertCircle, Calendar, Hash, Truck, RefreshCw, Pencil } from 'lucide-react'
 import Pagination, { usePagination } from './Pagination'
+import EditStockEntryModal from './EditStockEntryModal'
 
 // `refreshTrigger` é opcional: o pai pode incrementá-lo após salvar uma nota
 // pra forçar refetch sem precisar remontar o componente. Default 0 mantém
@@ -21,6 +22,7 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
     const [loadError, setLoadError] = useState(null)
     const [expandedEntry, setExpandedEntry] = useState(null)
     const [entryItems, setEntryItems] = useState({}) // { entryId: [items] }
+    const [editingEntryId, setEditingEntryId] = useState(null)
     const pagination = usePagination(entries, 10)
 
     const fetchEntries = async () => {
@@ -204,7 +206,12 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                 pagination.paginatedItems.map(entry => (
                     <div key={entry.id} className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden transition-all duration-300">
                         <div className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="flex items-center gap-4">
+                            <button
+                                type="button"
+                                onClick={() => setEditingEntryId(entry.id)}
+                                className="flex items-center gap-4 text-left flex-1 min-w-0 hover:opacity-80 transition"
+                                title="Clique para editar esta NF"
+                            >
                                 <div className={`p-2 rounded-xl ${entry.xml_key ? 'bg-blue-500/10 text-blue-400' : 'bg-orange-500/10 text-orange-400'}`} title={entry.xml_key ? 'Importado via XML' : 'Lançamento Manual'}>
                                     <FileText className="w-5 h-5" />
                                 </div>
@@ -232,17 +239,24 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                                         </span>
                                     </div>
                                 </div>
-                            </div>
+                            </button>
 
                             <div className="flex items-center gap-2">
-                                <button 
+                                <button
+                                    onClick={() => setEditingEntryId(entry.id)}
+                                    className="p-2 text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
+                                    title="Editar nota fiscal"
+                                >
+                                    <Pencil className="w-5 h-5" />
+                                </button>
+                                <button
                                     onClick={() => toggleExpand(entry.id)}
                                     className="p-2 text-gray-400 hover:text-white transition"
                                     title="Ver itens da nota"
                                 >
                                     {expandedEntry === entry.id ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                                 </button>
-                                <button 
+                                <button
                                     onClick={() => handleDelete(entry)}
                                     className="p-2 text-red-500 hover:bg-red-500/10 rounded-lg transition"
                                     title="Excluir nota e reverter estoque"
@@ -304,6 +318,19 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
                     label="notas"
                 />
             )}
+
+            <EditStockEntryModal
+                entryId={editingEntryId}
+                isOpen={editingEntryId !== null}
+                onClose={() => setEditingEntryId(null)}
+                onSaved={() => {
+                    // Apaga o cache local dos itens expandidos pra forçar
+                    // re-fetch quando o operador reabrir aquela NF, e atualiza
+                    // a lista de entries pra refletir total/fornecedor edit.
+                    setEntryItems({})
+                    fetchEntries()
+                }}
+            />
         </div>
     )
 }

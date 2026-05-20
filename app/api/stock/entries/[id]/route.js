@@ -2,11 +2,10 @@ import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
 import { revalidatePath } from 'next/cache'
 
-// Entrada manual de NF, server-side. Substitui a versão client-side que
-// disparava AbortError ("signal is aborted without reason") quando a sessão
-// supabase refreshava mid-call. Mesma estratégia do /api/stock/import (XML).
-// Inclui frete e desconto (total ou per-item) — campos novos exclusivos do
-// fluxo manual; XML continua igual.
+// GET: carrega entry + items + transações pra preencher o modal de edição.
+// PUT: edita a NF — reverte estoque, troca itens, reaplica estoque e
+// regenera as transações financeiras. Idempotente: roda múltiplas vezes
+// e converge no mesmo estado final.
 
 async function getTenantId(supabase, user) {
     const { data: p1 } = await supabase
@@ -15,7 +14,6 @@ async function getTenantId(supabase, user) {
         .eq('user_id', user.id)
         .maybeSingle()
     if (p1?.tenant_id) return p1.tenant_id
-
     const { data: p2 } = await supabase
         .from('profiles')
         .select('tenant_id')
@@ -26,17 +24,71 @@ async function getTenantId(supabase, user) {
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100
 
-export async function POST(request) {
-    const supabase = await createClient()
+export const dynamic = 'force-dynamic'
 
+export async function GET(_request, { params }) {
+    const supabase = await createClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
         return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
-
     const tenantId = await getTenantId(supabase, user)
     if (!tenantId) {
-        return NextResponse.json({ error: 'Empresa não encontrada para este usuário.' }, { status: 403 })
+        return NextResponse.json({ error: 'Empresa não encontrada.' }, { status: 403 })
+    }
+    const { id } = await params
+    const entryId = Number(id)
+    if (!Number.isInteger(entryId)) {
+        return NextResponse.json({ error: 'ID inválido.' }, { status: 400 })
+    }
+
+    const { data: entry, error: entryErr } = await supabase
+        .from('stock_entries')
+        .select('*, suppliers(id, name, cnpj)')
+        .eq('id', entryId)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+    if (entryErr) {
+        return NextResponse.json({ error: entryErr.message }, { status: 500 })
+    }
+    if (!entry) {
+        return NextResponse.json({ error: 'Nota não encontrada.' }, { status: 404 })
+    }
+
+    const { data: items, error: itemsErr } = await supabase
+        .from('stock_entry_items')
+        .select('*')
+        .eq('stock_entry_id', entryId)
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: true })
+    if (itemsErr) {
+        return NextResponse.json({ error: itemsErr.message }, { status: 500 })
+    }
+
+    const { data: txs } = await supabase
+        .from('transactions')
+        .select('id, description, type, category, amount, due_date, status, payment_method, date')
+        .eq('related_stock_entry_id', entryId)
+        .eq('tenant_id', tenantId)
+        .order('due_date', { ascending: true, nullsFirst: false })
+
+    return NextResponse.json({ entry, items: items || [], transactions: txs || [] })
+}
+
+export async function PUT(request, { params }) {
+    const supabase = await createClient()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+        return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
+    }
+    const tenantId = await getTenantId(supabase, user)
+    if (!tenantId) {
+        return NextResponse.json({ error: 'Empresa não encontrada.' }, { status: 403 })
+    }
+    const { id } = await params
+    const entryId = Number(id)
+    if (!Number.isInteger(entryId)) {
+        return NextResponse.json({ error: 'ID inválido.' }, { status: 400 })
     }
 
     let body
@@ -47,14 +99,14 @@ export async function POST(request) {
     }
 
     const {
-        supplier,            // { id?, name, cnpj?, isNew }
+        supplier,
         invoiceNumber,
-        emissionDate,        // YYYY-MM-DD
-        items,               // [{ name, sku, ean, quantity, cost_price, margin, selling_price, discount_amount? }]
+        emissionDate,
+        items,
         freightAmount = 0,
-        discountMode = 'total',  // 'total' | 'per_item'
-        discountAmount = 0,      // só usado quando discountMode === 'total'
-        paymentMode,             // 'upfront' | 'installments'
+        discountMode = 'total',
+        discountAmount = 0,
+        paymentMode,
         upfrontMethod,
         installments = []
     } = body
@@ -67,7 +119,60 @@ export async function POST(request) {
     }
 
     try {
-        // 1. Fornecedor (resolve existente ou cria com retry em unique-violation)
+        // 0. Confirma posse da nota antes de qualquer escrita.
+        const { data: currentEntry, error: curErr } = await supabase
+            .from('stock_entries')
+            .select('id')
+            .eq('id', entryId)
+            .eq('tenant_id', tenantId)
+            .maybeSingle()
+        if (curErr) throw new Error(curErr.message)
+        if (!currentEntry) {
+            return NextResponse.json({ error: 'Nota não encontrada ou pertence a outro tenant.' }, { status: 404 })
+        }
+
+        // 1. Reverter estoque dos itens atuais antes de re-aplicar.
+        const { data: oldItems, error: oldErr } = await supabase
+            .from('stock_entry_items')
+            .select('product_id, quantity')
+            .eq('stock_entry_id', entryId)
+            .eq('tenant_id', tenantId)
+        if (oldErr) throw new Error(`Erro lendo itens atuais: ${oldErr.message}`)
+
+        for (const old of (oldItems || [])) {
+            if (!old.product_id) continue
+            const { data: prod } = await supabase
+                .from('products')
+                .select('quantity')
+                .eq('id', old.product_id)
+                .eq('tenant_id', tenantId)
+                .maybeSingle()
+            if (!prod) continue
+            const reverted = Number(prod.quantity || 0) - Number(old.quantity || 0)
+            const { error: revErr } = await supabase
+                .from('products')
+                .update({ quantity: reverted })
+                .eq('id', old.product_id)
+                .eq('tenant_id', tenantId)
+            if (revErr) throw new Error(`Erro revertendo estoque: ${revErr.message}`)
+        }
+
+        // 2. Limpa itens e transações antigas — vamos regerar tudo.
+        const { error: delItemsErr } = await supabase
+            .from('stock_entry_items')
+            .delete()
+            .eq('stock_entry_id', entryId)
+            .eq('tenant_id', tenantId)
+        if (delItemsErr) throw new Error(`Erro removendo itens antigos: ${delItemsErr.message}`)
+
+        const { error: delTxErr } = await supabase
+            .from('transactions')
+            .delete()
+            .eq('related_stock_entry_id', entryId)
+            .eq('tenant_id', tenantId)
+        if (delTxErr) throw new Error(`Erro removendo transações antigas: ${delTxErr.message}`)
+
+        // 3. Resolve fornecedor (igual ao manual-entry: aceita existing id ou novo).
         let supplierId
         if (supplier.isNew) {
             if (!supplier.cnpj?.trim()) {
@@ -79,7 +184,6 @@ export async function POST(request) {
                 .eq('cnpj', supplier.cnpj.trim())
                 .eq('tenant_id', tenantId)
                 .maybeSingle()
-
             if (existing) {
                 supplierId = existing.id
             } else {
@@ -88,7 +192,6 @@ export async function POST(request) {
                     .insert([{ tenant_id: tenantId, name: supplier.name.trim(), cnpj: supplier.cnpj.trim() }])
                     .select('id')
                     .single()
-
                 if (createErr?.code === '23505') {
                     const { data: retried } = await supabase
                         .from('suppliers')
@@ -98,7 +201,6 @@ export async function POST(request) {
                         .maybeSingle()
                     if (retried) { created = retried; createErr = null }
                 }
-
                 if (createErr) throw new Error(`Erro ao criar fornecedor: ${createErr.message}`)
                 supplierId = created.id
             }
@@ -106,34 +208,26 @@ export async function POST(request) {
             supplierId = supplier.id
         }
 
-        // 2. Cálculos: rateio de frete e desconto-total proporcional ao subtotal de cada item
+        // 4. Normaliza + cálculo de rateios (cópia da lógica de manual-entry).
         const normalized = items.map(it => {
             const qty = parseFloat(it.quantity) || 0
             const unitCost = parseFloat(it.cost_price) || 0
             const subtotal = round2(qty * unitCost)
             const perItemDisc = discountMode === 'per_item' ? round2(it.discount_amount || 0) : 0
-            return {
-                ...it,
-                qty,
-                unitCost,
-                subtotal,
-                perItemDisc
-            }
+            return { ...it, qty, unitCost, subtotal, perItemDisc }
         })
-
         const sumSubtotals = normalized.reduce((acc, it) => acc + it.subtotal, 0)
         const freight = round2(freightAmount)
         const totalDiscount = discountMode === 'total' ? round2(discountAmount) : 0
         const perItemDiscTotal = discountMode === 'per_item'
             ? normalized.reduce((acc, it) => acc + it.perItemDisc, 0)
             : 0
-
         const nfTotal = round2(sumSubtotals + freight - totalDiscount - perItemDiscTotal)
         if (nfTotal < 0) {
-            return NextResponse.json({ error: 'Total da NF ficou negativo após frete/desconto.' }, { status: 400 })
+            return NextResponse.json({ error: 'Total da NF ficou negativo.' }, { status: 400 })
         }
 
-        // 3. Upsert produtos + monta linhas de stock_entry_items com custo final ajustado
+        // 5. Upsert produtos + monta novas linhas de stock_entry_items.
         const stockEntryItemsRows = []
         for (const it of normalized) {
             const share = sumSubtotals > 0 ? it.subtotal / sumSubtotals : 0
@@ -146,9 +240,16 @@ export async function POST(request) {
             const finalSellingPrice = round2(finalUnitCost * (1 + margin / 100))
 
             let existingProd = null
-
-            // (a) Override explícito: operador vinculou via picker UI.
-            if (it.link_product_id) {
+            if (it.product_id) {
+                const { data } = await supabase
+                    .from('products')
+                    .select('id, quantity, ean')
+                    .eq('tenant_id', tenantId)
+                    .eq('id', it.product_id)
+                    .maybeSingle()
+                existingProd = data
+            }
+            if (!existingProd && it.link_product_id) {
                 const { data } = await supabase
                     .from('products')
                     .select('id, quantity, ean')
@@ -157,8 +258,6 @@ export async function POST(request) {
                     .maybeSingle()
                 existingProd = data
             }
-
-            // (b) Match automático por EAN (digitado manualmente).
             if (!existingProd && it.ean?.trim()) {
                 const { data } = await supabase
                     .from('products')
@@ -168,8 +267,6 @@ export async function POST(request) {
                     .maybeSingle()
                 existingProd = data
             }
-
-            // (c) Match automático por SKU + fornecedor.
             if (!existingProd && it.sku?.trim()) {
                 const { data } = await supabase
                     .from('products')
@@ -191,21 +288,15 @@ export async function POST(request) {
                     supplier_id: supplierId
                 }
                 if (it.ean?.trim() && !existingProd.ean) updatePayload.ean = it.ean.trim()
-                // .select() + .eq('tenant_id') confirma que o UPDATE de fato
-                // tocou a linha do produto. Sem isso, uma RLS bloqueando o
-                // WITH CHECK passava silenciosamente (rowCount=0, sem error)
-                // e a quantidade do produto ficava congelada no valor antigo —
-                // sintoma: "lancei a NF mas as quantidades não constam no
-                // estoque". Verificar updated.length permite falhar explícito.
                 const { data: updated, error: updErr } = await supabase
                     .from('products')
                     .update(updatePayload)
                     .eq('id', existingProd.id)
                     .eq('tenant_id', tenantId)
-                    .select('id, quantity')
+                    .select('id')
                 if (updErr) throw new Error(`Erro atualizar produto: ${updErr.message}`)
                 if (!updated || updated.length === 0) {
-                    throw new Error(`Falha ao atualizar produto "${it.name}" — quantidade não foi gravada. Verifique permissões (RLS) ou se o produto pertence ao tenant correto.`)
+                    throw new Error(`Falha ao reaplicar quantidade em "${it.name}".`)
                 }
                 finalProductId = existingProd.id
             } else {
@@ -228,28 +319,9 @@ export async function POST(request) {
                 finalProductId = newProd.id
             }
 
-            // Equivalências: operador escolheu produtos relacionados no picker.
-            if (Array.isArray(it.linked_product_ids) && it.linked_product_ids.length > 0) {
-                const cleanIds = it.linked_product_ids.filter(Boolean).filter(id => id !== finalProductId)
-                if (cleanIds.length > 0) {
-                    const { data: cur } = await supabase
-                        .from('products')
-                        .select('linked_products')
-                        .eq('id', finalProductId)
-                        .eq('tenant_id', tenantId)
-                        .maybeSingle()
-                    const existing = Array.isArray(cur?.linked_products) ? cur.linked_products : []
-                    const merged = Array.from(new Set([...existing, ...cleanIds]))
-                    await supabase
-                        .from('products')
-                        .update({ linked_products: merged })
-                        .eq('id', finalProductId)
-                        .eq('tenant_id', tenantId)
-                }
-            }
-
             stockEntryItemsRows.push({
                 tenant_id: tenantId,
+                stock_entry_id: entryId,
                 product_id: finalProductId,
                 sku: it.sku?.trim() || null,
                 ean: it.ean?.trim() || null,
@@ -261,35 +333,29 @@ export async function POST(request) {
             })
         }
 
-        // 4. stock_entries
-        const { data: entry, error: entryErr } = await supabase
+        // 6. Atualiza header da NF.
+        const supplierLabel = supplier.isNew ? supplier.name.trim() : (supplier.name || 'Fornecedor')
+        const { error: headerErr } = await supabase
             .from('stock_entries')
-            .insert([{
-                tenant_id: tenantId,
+            .update({
                 supplier_id: supplierId,
-                xml_key: null,
                 invoice_number: invoiceNumber ? String(invoiceNumber).trim() : null,
                 emission_date: emissionDate || null,
                 total_value: nfTotal,
                 freight_amount: freight,
                 discount_amount: totalDiscount,
                 discount_mode: discountMode
-            }])
-            .select('id')
-            .single()
-        if (entryErr) throw new Error(`Erro registrar entrada: ${entryErr.message}`)
+            })
+            .eq('id', entryId)
+            .eq('tenant_id', tenantId)
+        if (headerErr) throw new Error(`Erro atualizando NF: ${headerErr.message}`)
 
-        // 5. stock_entry_items
-        const finalEntryItems = stockEntryItemsRows.map(row => ({ ...row, stock_entry_id: entry.id }))
-        const { error: itemsErr } = await supabase.from('stock_entry_items').insert(finalEntryItems)
-        if (itemsErr) {
-            await supabase.from('stock_entries').delete().eq('id', entry.id)
-            throw new Error(`Erro registrar itens: ${itemsErr.message}`)
-        }
+        // 7. Re-insere itens.
+        const { error: itemsErr } = await supabase.from('stock_entry_items').insert(stockEntryItemsRows)
+        if (itemsErr) throw new Error(`Erro inserindo itens novos: ${itemsErr.message}`)
 
-        // 6. Transactions (mesma lógica do XML)
+        // 8. Re-cria transações financeiras vinculadas.
         const nowIso = new Date().toISOString()
-        const supplierLabel = supplier.isNew ? supplier.name.trim() : (supplier.name || 'Fornecedor')
         let txRows
         if (paymentMode === 'installments') {
             if (!installments.length) throw new Error('Parcelas vazias.')
@@ -300,9 +366,9 @@ export async function POST(request) {
                 category: 'Fornecedores',
                 amount: parseFloat(p.amount),
                 due_date: p.dueDate,
-                status: 'pending',
+                status: p.status === 'paid' ? 'paid' : 'pending',
                 payment_method: p.paymentMethod,
-                related_stock_entry_id: entry.id,
+                related_stock_entry_id: entryId,
                 date: nowIso
             }))
         } else {
@@ -315,30 +381,26 @@ export async function POST(request) {
                 due_date: null,
                 status: 'paid',
                 payment_method: upfrontMethod || 'Dinheiro',
-                related_stock_entry_id: entry.id,
+                related_stock_entry_id: entryId,
                 date: nowIso
             }]
         }
-
         const { error: txErr } = await supabase.from('transactions').insert(txRows)
-        if (txErr) throw new Error(`Erro registrar transação: ${txErr.message}`)
+        if (txErr) throw new Error(`Erro registrando transações: ${txErr.message}`)
 
-        // Invalida o cache SSR das telas que dependem dos produtos atualizados.
-        // Sem isso, os itens entravam no banco mas a tela /stock continuava
-        // mostrando o snapshot anterior — sintoma reportado pelo operador
-        // como "não está adicionando os itens no estoque".
         revalidatePath('/stock')
         revalidatePath('/import')
+        revalidatePath('/financial')
 
         return NextResponse.json({
             success: true,
-            entryId: entry.id,
+            entryId,
             total: nfTotal,
             itemCount: items.length,
             transactionCount: txRows.length
         })
     } catch (err) {
-        console.error('[stock/manual-entry] failure:', err)
-        return NextResponse.json({ error: err.message || 'Falha ao registrar entrada manual.' }, { status: 500 })
+        console.error('[stock/entries/:id PUT] failure:', err)
+        return NextResponse.json({ error: err.message || 'Falha ao editar NF.' }, { status: 500 })
     }
 }
