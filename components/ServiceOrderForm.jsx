@@ -108,6 +108,10 @@ export default function ServiceOrderForm({
         const d = new Date(order.created_at)
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     })
+    // Em OS retroativa o default é NÃO baixar estoque (histórico já saiu no
+    // passado). Mas se o usuário ainda tem esses itens em depósito e está só
+    // registrando agora, ele pode marcar pra baixar mesmo assim.
+    const [deductStockOnRetroactive, setDeductStockOnRetroactive] = useState(false)
 
     const [clients, setClients] = useState(initialClients)
     const [clientVehicles, setClientVehicles] = useState([])
@@ -461,10 +465,13 @@ export default function ServiceOrderForm({
             if (!okSemRevisao) return
         }
 
+        const willDeductStock = !isRetroactive || deductStockOnRetroactive
         const ok = await confirm({
             title: isRetroactive ? 'Finalizar OS retroativa' : 'Finalizar OS',
             message: isRetroactive
-                ? `Data: ${dateDisplay}\n\nA receita financeira será lançada nessa data (não em hoje).\n\nO estoque NÃO será baixado — os itens dessa OS são considerados histórico (já saíram do depósito no passado).`
+                ? `Data: ${dateDisplay}\n\nA receita financeira será lançada nessa data (não em hoje).\n\n${willDeductStock
+                    ? 'Estoque SERÁ baixado — você marcou a opção "Baixar estoque mesmo assim".'
+                    : 'O estoque NÃO será baixado — os itens dessa OS são considerados histórico (já saíram do depósito no passado).'}`
                 : 'Isso irá baixar o estoque e lançar a receita financeira. Deseja continuar?',
             confirmLabel: 'Finalizar',
         })
@@ -486,6 +493,7 @@ export default function ServiceOrderForm({
                     discount_amount: calculateDiscountAmount(),
                     service_date_iso: serviceDateISO,
                     is_retroactive: isRetroactive,
+                    deduct_stock: willDeductStock,
                     payment_method: paymentMethod,
                     payments,  // NEW: null when single, [{method,amount}] when split
                     client_id: clientId || null,
@@ -859,10 +867,26 @@ export default function ServiceOrderForm({
                                 className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full md:w-72 p-2.5"
                             />
                             {serviceDate !== todayLocalISO && (
-                                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
-                                    OS retroativa — será gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>. Ao finalizar, a transação financeira também usa essa data.
-                                </p>
+                                <>
+                                    <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                        OS retroativa — será gravada com a data <strong>{serviceDate.split('-').reverse().join('/')}</strong>. Ao finalizar, a transação financeira também usa essa data.
+                                    </p>
+                                    <label className="flex items-start gap-2 mt-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={deductStockOnRetroactive}
+                                            onChange={(e) => setDeductStockOnRetroactive(e.target.checked)}
+                                            className="mt-0.5 h-4 w-4 rounded border-neutral-600 bg-neutral-800 text-blue-600 focus:ring-blue-500"
+                                        />
+                                        <span className="text-xs text-gray-300 leading-tight">
+                                            Baixar estoque mesmo assim
+                                            <span className="block text-[11px] text-gray-500">
+                                                Por padrão, OS retroativa não baixa estoque (itens já saíram no passado). Marque se você ainda tem esses itens em depósito e quer baixá-los agora.
+                                            </span>
+                                        </span>
+                                    </label>
+                                </>
                             )}
                             <p className="text-[11px] text-gray-500 mt-1">
                                 Use uma data passada para importar histórico do sistema antigo. Default = hoje.

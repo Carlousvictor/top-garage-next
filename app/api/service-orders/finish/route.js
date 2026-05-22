@@ -36,6 +36,10 @@ export async function POST(request) {
         total,
         service_date_iso,
         is_retroactive,
+        // Quando true, força baixa de estoque mesmo em OS retroativa. Default
+        // legado: undefined → mantém comportamento anterior (retroativa = sem
+        // baixa). Frontend novo manda explicitamente true/false.
+        deduct_stock,
         payment_method,
         payments,  // NEW: optional [{ method, amount }] for split payments
         items = [],
@@ -95,8 +99,12 @@ export async function POST(request) {
 
     if (osError) return NextResponse.json({ error: osError.message }, { status: 400 })
 
-    // 2. Deduct stock only for non-retroactive orders
-    if (!is_retroactive) {
+    // 2. Deduct stock. Regra: OS atual sempre baixa; OS retroativa só baixa
+    // quando o usuário marca explicitamente `deduct_stock=true`. Se o campo
+    // não veio (cliente legado), preserva comportamento antigo (retroativa
+    // não baixa).
+    const shouldDeductStock = deduct_stock === true || (deduct_stock === undefined && !is_retroactive)
+    if (shouldDeductStock) {
         for (const item of items) {
             if (item.type === 'product' && item.product_id) {
                 const { data: prod } = await supabase

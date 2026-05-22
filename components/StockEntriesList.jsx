@@ -73,16 +73,32 @@ export default function StockEntriesList({ refreshTrigger = 0 }) {
 
         setExpandedEntry(entryId)
         if (!entryItems[entryId]) {
+            // Usa a rota server-side em vez de supabase.from(...) no browser.
+            // O client-side trava com token stale e nunca resolve, deixando
+            // o expand em "Carregando itens..." pra sempre. AbortController
+            // garante que qualquer hang vire erro visível.
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 20000)
             try {
-                const { data, error } = await supabase
-                    .from('stock_entry_items')
-                    .select('*')
-                    .eq('stock_entry_id', entryId)
-                
-                if (error) throw error
-                setEntryItems(prev => ({ ...prev, [entryId]: data }))
+                const res = await fetch(`/api/stock/entries/${entryId}`, {
+                    method: 'GET',
+                    credentials: 'include',
+                    cache: 'no-store',
+                    signal: controller.signal,
+                })
+                const json = await res.json().catch(() => ({}))
+                if (!res.ok) throw new Error(json.error || `Erro HTTP ${res.status}`)
+                setEntryItems(prev => ({ ...prev, [entryId]: json.items || [] }))
             } catch (error) {
-                toast.error('Erro ao carregar itens da nota: ' + error.message)
+                const msg = error?.name === 'AbortError'
+                    ? 'Tempo limite (20s) ao carregar itens da nota.'
+                    : (error?.message || 'Erro desconhecido')
+                toast.error('Erro ao carregar itens da nota: ' + msg)
+                // Marca como array vazio pra view sair do loading e mostrar
+                // mensagem útil em vez de spinner eterno.
+                setEntryItems(prev => ({ ...prev, [entryId]: [] }))
+            } finally {
+                clearTimeout(timeoutId)
             }
         }
     }
