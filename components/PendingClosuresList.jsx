@@ -3,17 +3,22 @@ import { useEffect, useState } from 'react'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { useConfirm } from '../context/ConfirmContext'
 import { AlertTriangle, Lock, ArrowLeft, CheckCircle2, CalendarDays } from 'lucide-react'
 
 export default function PendingClosuresList() {
     const supabase = createClient()
     const router = useRouter()
     const { companyId, loading: authLoading } = useAuth()
+    const toast = useToast()
+    const confirm = useConfirm()
 
     const [loading, setLoading] = useState(true)
     const [pendingDays, setPendingDays] = useState([])
     const [closedDays, setClosedDays] = useState([])
     const [errorMsg, setErrorMsg] = useState('')
+    const [closingDate, setClosingDate] = useState(null)
 
     const formatBRL = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
     const formatDatePt = (dateStr) => {
@@ -38,7 +43,7 @@ export default function PendingClosuresList() {
             // Get all transactions in window (only past days, not today)
             const { data: txs, error: txErr } = await supabase
                 .from('transactions')
-                .select('date, amount, type, status')
+                .select('date, amount, type, status, payment_method')
                 .eq('tenant_id', companyId)
                 .gte('date', lookbackISO)
                 .lt('date', todayISO)
@@ -61,9 +66,13 @@ export default function PendingClosuresList() {
                 if (t.status !== 'paid') continue
                 const d = new Date(t.date)
                 const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-                if (!byDay.has(key)) byDay.set(key, { income: 0, expense: 0 })
+                if (!byDay.has(key)) byDay.set(key, { income: 0, expense: 0, byMethod: {} })
                 const cur = byDay.get(key)
-                if (t.type === 'income') cur.income += Number(t.amount)
+                if (t.type === 'income') {
+                    cur.income += Number(t.amount)
+                    const method = t.payment_method || 'Não Informado'
+                    cur.byMethod[method] = (cur.byMethod[method] || 0) + Number(t.amount)
+                }
                 else if (t.type === 'expense') cur.expense += Number(t.amount)
             }
 
@@ -74,7 +83,8 @@ export default function PendingClosuresList() {
                     date: day,
                     totalIncome: totals.income,
                     totalExpense: totals.expense,
-                    net: totals.income - totals.expense
+                    net: totals.income - totals.expense,
+                    breakdownByMethod: totals.byMethod
                 }
                 if (closedMap.has(day)) {
                     const c = closedMap.get(day)
@@ -110,6 +120,43 @@ export default function PendingClosuresList() {
         }
         fetchData()
     }, [companyId, authLoading])
+
+    const handleCloseDay = async (day) => {
+        const ok = await confirm({
+            title: 'Fechar dia retroativo',
+            message: `Confirmar fechamento do dia ${formatDatePt(day.date)}?\n\nEntradas: ${formatBRL(day.totalIncome)}\nSaídas: ${formatBRL(day.totalExpense)}\nSaldo: ${formatBRL(day.net)}`,
+            confirmLabel: 'Fechar dia',
+        })
+        if (!ok) return
+
+        setClosingDate(day.date)
+        try {
+            const res = await fetch('/api/financial/closure', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    closure_date: day.date,
+                    total_income: day.totalIncome,
+                    total_expense: day.totalExpense,
+                    net_balance: day.net,
+                    breakdown_by_method: day.breakdownByMethod || {},
+                    observation: 'Fechado via Pendências de Fechamento'
+                })
+            })
+            const json = await res.json()
+            if (!res.ok) {
+                toast.error('Erro ao fechar dia: ' + (json.error || res.statusText))
+            } else {
+                toast.success(`Dia ${formatDatePt(day.date)} fechado com sucesso.`)
+                await fetchData()
+            }
+        } catch (err) {
+            toast.error('Erro ao fechar dia: ' + err.message)
+        } finally {
+            setClosingDate(null)
+        }
+    }
 
     if (loading) {
         return <div className="p-8 text-center text-gray-400 animate-pulse">Carregando pendências...</div>
@@ -170,12 +217,22 @@ export default function PendingClosuresList() {
                                         </p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => router.push(`/financial/daily?date=${day.date}`)}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white text-sm px-4 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition"
-                                >
-                                    <Lock className="w-4 h-4" /> Fechar dia
-                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => router.push(`/financial/daily?date=${day.date}`)}
+                                        className="text-sm text-gray-400 hover:text-white px-3 py-1.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition"
+                                    >
+                                        Ver detalhes
+                                    </button>
+                                    <button
+                                        onClick={() => handleCloseDay(day)}
+                                        disabled={closingDate === day.date}
+                                        className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-neutral-800 disabled:text-gray-500 disabled:cursor-not-allowed text-white text-sm px-4 py-2 rounded-lg font-bold shadow-md flex items-center gap-2 transition"
+                                    >
+                                        <Lock className="w-4 h-4" />
+                                        {closingDate === day.date ? 'Fechando...' : 'Fechar dia'}
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
