@@ -1,5 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
+import Select from 'react-select'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
@@ -10,6 +11,29 @@ const EMPTY_VEHICLE = {
     plate: '', brand: '', model: '', submodel: '', year: '', manufacture_year: '',
     color: '', fuel_type: '', chassi: '', engine_displacement: '', transmission: '',
     city: '', state: '', observations: ''
+}
+
+// Tema escuro do react-select usado no modal de mesclagem.
+const mergeSelectStyles = {
+    control: (base, state) => ({
+        ...base,
+        backgroundColor: '#262626',
+        borderColor: state.isFocused ? '#ef4444' : '#404040',
+        boxShadow: 'none',
+        minHeight: '42px',
+        '&:hover': { borderColor: '#ef4444' },
+    }),
+    menu: (base) => ({ ...base, backgroundColor: '#171717', border: '1px solid #404040', zIndex: 60 }),
+    menuPortal: (base) => ({ ...base, zIndex: 60 }),
+    option: (base, state) => ({
+        ...base,
+        backgroundColor: state.isFocused ? '#262626' : 'transparent',
+        color: '#ffffff',
+        cursor: 'pointer',
+    }),
+    singleValue: (base) => ({ ...base, color: '#ffffff' }),
+    input: (base) => ({ ...base, color: '#ffffff' }),
+    placeholder: (base) => ({ ...base, color: '#9ca3af' }),
 }
 
 export default function ClientList({ initialClients }) {
@@ -24,6 +48,12 @@ export default function ClientList({ initialClients }) {
     const [newVehicle, setNewVehicle] = useState(EMPTY_VEHICLE)
     const [searchText, setSearchText] = useState('')
     const [duplicateWarning, setDuplicateWarning] = useState(null)
+    // Estado do modal de mesclagem. Preenchido quando a exclusão é bloqueada
+    // por dependências (OS/veículos/transações) e o operador pode mesclar o
+    // cadastro duplicado com outro cliente em vez de excluir.
+    const [mergeState, setMergeState] = useState(null) // { source, dependencies }
+    const [mergeTargetId, setMergeTargetId] = useState('')
+    const [merging, setMerging] = useState(false)
 
     // Check live de duplicado conforme o usuário preenche o formulário.
     // Dispara quando documento estiver preenchido OU (nome + telefone) ambos preenchidos.
@@ -138,6 +168,13 @@ export default function ClientList({ initialClients }) {
         try {
             const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE', credentials: 'include' })
             const json = await res.json().catch(() => ({}))
+            if (res.status === 409 && json.dependencies) {
+                // Exclusão bloqueada por dependências — oferece mesclagem com outro cadastro.
+                const source = clients.find(c => c.id === id) || { id, name: 'cliente' }
+                setMergeState({ source, dependencies: json.dependencies, message: json.error })
+                setMergeTargetId('')
+                return
+            }
             if (!res.ok) {
                 toast.error(json.error || `Erro ao excluir cliente (HTTP ${res.status}).`)
                 return
@@ -148,6 +185,34 @@ export default function ClientList({ initialClients }) {
             toast.success('Cliente excluído com sucesso.')
         } catch (err) {
             toast.error('Erro ao excluir cliente: ' + (err?.message || 'falha de rede'))
+        }
+    }
+
+    const handleMerge = async () => {
+        if (!mergeState?.source?.id || !mergeTargetId) return
+        setMerging(true)
+        try {
+            const res = await fetch('/api/clients/merge', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ sourceId: mergeState.source.id, targetId: mergeTargetId }),
+            })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                toast.error(json.error || 'Erro ao mesclar clientes.')
+                return
+            }
+            if (json.clients) setClients(json.clients)
+            const m = json.merged
+            const movedMsg = m ? ` (${m.vehicles_moved} veículo(s) movido(s), ${m.vehicles_discarded} duplicado(s) descartado(s))` : ''
+            toast.success(`Cadastros mesclados e duplicado excluído.${movedMsg}`)
+            setMergeState(null)
+            setMergeTargetId('')
+        } catch (err) {
+            toast.error('Erro ao mesclar: ' + (err?.message || 'falha de rede'))
+        } finally {
+            setMerging(false)
         }
     }
 
@@ -240,8 +305,90 @@ export default function ClientList({ initialClients }) {
     // independente do tamanho de `filteredClients`. Default = 25.
     const pagination = usePagination(filteredClients, 25)
 
+    // Candidatos a destino da mesclagem: todos exceto o próprio source.
+    const mergeTargets = mergeState
+        ? clients.filter(c => c.id !== mergeState.source.id)
+        : []
+
     return (
         <div className="w-full bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800">
+            {mergeState && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+                    <div className="w-full max-w-lg bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl p-6">
+                        <h3 className="text-lg font-bold text-white mb-1">Mesclar cadastro duplicado</h3>
+                        <p className="text-sm text-gray-400 mb-4">
+                            O cliente <span className="font-bold text-white">
+                                #{mergeState.source.client_number ?? '?'} — {mergeState.source.name}
+                            </span> tem registros vinculados e não pode ser excluído direto.
+                            Escolha o cadastro que será <strong>mantido</strong>: as OS, transações e veículos
+                            do duplicado serão transferidos para ele (veículos com placa repetida não são duplicados),
+                            e este cadastro será excluído.
+                        </p>
+
+                        <div className="bg-neutral-800 border border-neutral-700 rounded-lg p-3 mb-4 text-xs text-gray-300">
+                            Registros do duplicado: {' '}
+                            {mergeState.dependencies.vehicles || 0} veículo(s) · {' '}
+                            {mergeState.dependencies.service_orders || 0} OS
+                        </div>
+
+                        <label className="block text-sm font-medium text-gray-300 mb-1">Manter este cadastro</label>
+                        <div className="mb-4">
+                            <Select
+                                instanceId="merge-target"
+                                isClearable
+                                placeholder="Pesquisar por nº, nome, telefone ou CPF/CNPJ..."
+                                noOptionsMessage={() => 'Nenhum cliente encontrado'}
+                                styles={mergeSelectStyles}
+                                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
+                                value={mergeTargets
+                                    .filter(c => c.id === mergeTargetId)
+                                    .map(c => ({ value: c.id, label: `#${c.client_number ?? '?'} — ${c.name}${c.phone ? ` · ${c.phone}` : ''}` }))[0] || null}
+                                onChange={(opt) => setMergeTargetId(opt?.value || '')}
+                                options={mergeTargets.map(c => ({
+                                    value: c.id,
+                                    label: `#${c.client_number ?? '?'} — ${c.name}${c.phone ? ` · ${c.phone}` : ''}`,
+                                    // campos extras pra busca custom
+                                    name: c.name || '',
+                                    phone: c.phone || '',
+                                    document: c.document || '',
+                                    number: String(c.client_number ?? ''),
+                                }))}
+                                filterOption={(option, input) => {
+                                    if (!input) return true
+                                    const q = input.toLowerCase()
+                                    const d = option.data
+                                    return (
+                                        d.name.toLowerCase().includes(q) ||
+                                        d.phone.toLowerCase().includes(q) ||
+                                        d.document.toLowerCase().includes(q) ||
+                                        d.number.includes(q)
+                                    )
+                                }}
+                            />
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                type="button"
+                                onClick={() => { setMergeState(null); setMergeTargetId('') }}
+                                disabled={merging}
+                                className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleMerge}
+                                disabled={merging || !mergeTargetId}
+                                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {merging ? 'Mesclando...' : 'Mesclar e excluir duplicado'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex justify-between items-center mb-6">
                 <h2 className="text-2xl font-bold text-white">Clientes</h2>
                 <button

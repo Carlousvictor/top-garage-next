@@ -223,23 +223,36 @@ export async function DELETE(request) {
         return NextResponse.json({ error: 'Cliente não encontrado ou já excluído.' }, { status: 404 })
     }
 
-    // Pre-check dependências
-    const [{ count: vehiclesCount }, { count: ordersCount }, { count: txCount }] = await Promise.all([
+    // Pre-check dependências.
+    // "Movimentação" = ter ordens de serviço. Veículos NÃO contam: são dados
+    // cadastrais (em cadastros duplicados costumam ser cópias dos mesmos carros).
+    // Transações se vinculam à OS (related_os_id), não ao cliente — logo a OS já
+    // representa a movimentação financeira. Cadastro sem OS pode ser excluído
+    // direto, levando seus veículos-cópia junto.
+    const [{ count: vehiclesCount }, { count: ordersCount }] = await Promise.all([
         supabase.from('vehicles').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
         supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
-        supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
     ])
 
-    const deps = []
-    if (vehiclesCount) deps.push(`${vehiclesCount} veículo(s)`)
-    if (ordersCount) deps.push(`${ordersCount} ordem(ns) de serviço`)
-    if (txCount) deps.push(`${txCount} transação(ões)`)
+    const hasMovement = (ordersCount || 0) > 0
 
-    if (deps.length > 0 && !force) {
+    // Com movimentação e sem force → bloqueia e oferece mesclagem (preserva dados).
+    if (hasMovement && !force) {
         return NextResponse.json({
-            error: `Cliente #${client.client_number ?? '?'} (${client.name}) possui ${deps.join(', ')} associada(s). Exclua/transfira esses registros antes de remover o cliente.`,
-            dependencies: { vehicles: vehiclesCount || 0, service_orders: ordersCount || 0, transactions: txCount || 0 },
+            error: `Cliente #${client.client_number ?? '?'} (${client.name}) possui ${ordersCount} ordem(ns) de serviço com movimentação. Para não perder o histórico, mescle este cadastro com outro cliente.`,
+            dependencies: { vehicles: vehiclesCount || 0, service_orders: ordersCount || 0 },
         }, { status: 409 })
+    }
+
+    // Sem movimentação (ou force): remove os veículos-cópia do cadastro antes de excluí-lo,
+    // evitando órfãos e o bloqueio da FK vehicles.client_id.
+    if ((vehiclesCount || 0) > 0) {
+        const { error: vErr } = await supabase
+            .from('vehicles')
+            .delete()
+            .eq('tenant_id', tenantId)
+            .eq('client_id', id)
+        if (vErr) return NextResponse.json({ error: 'Erro ao remover veículos do cliente: ' + vErr.message }, { status: 400 })
     }
 
     const { error } = await supabase
