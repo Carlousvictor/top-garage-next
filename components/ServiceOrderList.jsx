@@ -23,9 +23,13 @@ export default function ServiceOrderList({ initialOrders }) {
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
 
-    const formatClient = (c) => {
-        if (!c?.name) return 'Consumidor'
-        return c.client_number != null ? `${c.name} (#${c.client_number})` : c.name
+    // Nome exibido: cliente cadastrado (com #número) → nome livre do orçamento
+    // (client_label, não está em clients) → "Consumidor".
+    const formatClient = (order) => {
+        const c = order?.clients
+        if (c?.name) return c.client_number != null ? `${c.name} (#${c.client_number})` : c.name
+        if (order?.client_label) return order.client_label
+        return 'Consumidor'
     }
 
     const filteredOrders = (() => {
@@ -46,6 +50,7 @@ export default function ServiceOrderList({ initialOrders }) {
                 normalize(o.vehicle_plate).includes(q) ||
                 normalize(o.clients?.name).includes(q) ||
                 normalize(o.clients?.client_number).includes(q) ||
+                normalize(o.client_label).includes(q) ||
                 normalize(o.id).includes(q) ||
                 normalize(o.vehicle_model).includes(q)
             )
@@ -209,7 +214,7 @@ export default function ServiceOrderList({ initialOrders }) {
                             {pagination.paginatedItems.map((order) => (
                                 <tr key={order.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
                                     <td className="px-4 py-3 font-medium text-white">#{order.id}</td>
-                                    <td className="px-4 py-3">{formatClient(order.clients)}</td>
+                                    <td className="px-4 py-3">{formatClient(order)}</td>
                                     <td className="px-4 py-3">
                                         <div className="text-white">{order.vehicle_plate}</div>
                                         <div className="text-xs text-gray-500">{order.vehicle_model}</div>

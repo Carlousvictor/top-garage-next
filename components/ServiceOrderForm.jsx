@@ -642,7 +642,10 @@ export default function ServiceOrderForm({
                                     </button>
                                 </div>
                             </div>
-                            {isThirdParty ? (
+                            {/* Cliente livre (digitável, NÃO salva em clients): sempre na OS de
+                                Terceiros e também na OS normal quando marcada como Orçamento.
+                                O nome digitado vai pra service_orders.client_label e fica só na OS. */}
+                            {(isThirdParty || isEstimate) ? (
                                 <CreatableSelect
                                     instanceId="os-client"
                                     isClearable
@@ -936,7 +939,17 @@ export default function ServiceOrderForm({
                             type="checkbox"
                             id="isEstimate"
                             checked={isEstimate}
-                            onChange={(e) => setIsEstimate(e.target.checked)}
+                            onChange={(e) => {
+                                const checked = e.target.checked
+                                setIsEstimate(checked)
+                                // Ao desmarcar Orçamento numa OS normal, descarta o nome livre:
+                                // OS efetiva exige cliente cadastrado, então o client_label
+                                // digitado não deve sobrar. (Em Terceiros o nome livre é válido.)
+                                if (!checked && !isThirdParty) {
+                                    setClientLabel('')
+                                    setClientInputText('')
+                                }
+                            }}
                             className="w-4 h-4 text-red-600 bg-neutral-800 border-neutral-700 rounded focus:ring-red-500"
                         />
                         <label htmlFor="isEstimate" className="text-sm font-medium text-gray-300">

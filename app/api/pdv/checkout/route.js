@@ -135,6 +135,31 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Erro ao salvar transação: ' + txError.message }, { status: 400 })
     }
 
+    // 3b. Snapshot dos itens do carrinho — pra exibir/imprimir a venda depois.
+    // Update separado (não no insert acima) de propósito: se a coluna
+    // items_snapshot ainda não existir no banco (migration não aplicada), o
+    // erro é IGNORADO e a venda continua válida — comportamento antigo preservado.
+    // Once a migration roda, vendas novas passam a guardar os itens automaticamente.
+    const itemsSnapshot = items
+        .filter(it => it && (it.product_id || it.name || it.description))
+        .map(it => ({
+            product_id: it.product_id ?? null,
+            name: it.name || it.description || 'Item',
+            quantity: Number(it.quantity) || 0,
+            unit_price: Number(it.unit_price) || 0,
+        }))
+    if (itemsSnapshot.length > 0) {
+        const { error: snapErr } = await supabase
+            .from('transactions')
+            .update({ items_snapshot: itemsSnapshot })
+            .eq('id', txRow.id)
+            .eq('tenant_id', tenantId)
+        if (snapErr) {
+            // Não é fatal — só significa que a coluna ainda não foi criada.
+            console.warn('[pdv/checkout] items_snapshot não gravado (rode a migration 2026_05_30_add_items_snapshot_to_transactions):', snapErr.message)
+        }
+    }
+
     // 4. Se split, persiste o detalhamento das duas formas
     if (isSplit) {
         const paymentRows = payments.map(p => ({

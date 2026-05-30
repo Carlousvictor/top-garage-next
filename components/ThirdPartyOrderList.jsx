@@ -4,6 +4,7 @@ import { createClient } from '../utils/supabase/client'
 import { useConfirm } from '../context/ConfirmContext'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { Search, X } from 'lucide-react'
 import Pagination, { usePagination } from './Pagination'
 
 export default function ThirdPartyOrderList({ initialOrders }) {
@@ -11,19 +12,68 @@ export default function ThirdPartyOrderList({ initialOrders }) {
     const router = useRouter()
     const confirm = useConfirm()
     const [orders, setOrders] = useState(initialOrders || [])
+    const [filterStatus, setFilterStatus] = useState('Todos')
+    // Busca livre — mesmos campos da OS normal: placa, cliente (cadastrado ou
+    // nome livre client_label), nº da OS e modelo do veículo.
+    const [searchText, setSearchText] = useState('')
     // Filtro de data por created_at — range opcional, mesma semântica da OS normal.
     const [dateStart, setDateStart] = useState('')
     const [dateEnd, setDateEnd] = useState('')
 
+    const normalize = (v) => String(v ?? '').toLowerCase().trim()
+
+    // Nome exibido: cliente cadastrado (com #número) → nome livre (client_label)
+    // → observação → "Avulso". Mantém a cascata que a listagem já usava.
+    const formatClient = (order) => {
+        const c = order?.clients
+        if (c?.name) return c.client_number != null ? `${c.name} (#${c.client_number})` : c.name
+        return order?.client_label || order?.observation || 'Avulso'
+    }
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'Em Terceiros': return 'bg-cyan-900 text-cyan-300 border-cyan-700'
+            case 'Aberto': return 'bg-yellow-900 text-yellow-300 border-yellow-700'
+            case 'Em Andamento': return 'bg-blue-900 text-blue-300 border-blue-700'
+            case 'Concluido': return 'bg-green-900 text-green-300 border-green-700'
+            case 'Cancelado': return 'bg-red-900 text-red-300 border-red-700'
+            case 'Orçamento': return 'bg-purple-900 text-purple-300 border-purple-700'
+            default: return 'bg-neutral-800 text-gray-300 border-neutral-600'
+        }
+    }
+
     const filteredOrders = (() => {
-        if (!dateStart && !dateEnd) return orders
-        const startMs = dateStart ? new Date(dateStart + 'T00:00:00').getTime() : -Infinity
-        const endMs = dateEnd ? new Date(dateEnd + 'T23:59:59.999').getTime() : Infinity
-        return orders.filter(o => {
-            if (!o.created_at) return false
-            const t = new Date(o.created_at).getTime()
-            return t >= startMs && t <= endMs
-        })
+        let list = orders
+        if (filterStatus === 'Orçamento') {
+            list = list.filter(o => o.is_estimate === true)
+        } else {
+            list = list.filter(o => o.is_estimate !== true)
+            if (filterStatus !== 'Todos') {
+                list = list.filter(o => o.status === filterStatus)
+            }
+        }
+        const q = normalize(searchText)
+        if (q) {
+            list = list.filter(o =>
+                normalize(o.vehicle_plate).includes(q) ||
+                normalize(o.clients?.name).includes(q) ||
+                normalize(o.clients?.client_number).includes(q) ||
+                normalize(o.client_label).includes(q) ||
+                normalize(o.observation).includes(q) ||
+                normalize(o.id).includes(q) ||
+                normalize(o.vehicle_model).includes(q)
+            )
+        }
+        if (dateStart || dateEnd) {
+            const startMs = dateStart ? new Date(dateStart + 'T00:00:00').getTime() : -Infinity
+            const endMs = dateEnd ? new Date(dateEnd + 'T23:59:59.999').getTime() : Infinity
+            list = list.filter(o => {
+                if (!o.created_at) return false
+                const t = new Date(o.created_at).getTime()
+                return t >= startMs && t <= endMs
+            })
+        }
+        return list
     })()
 
     const pagination = usePagination(filteredOrders, 25)
@@ -51,43 +101,79 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                 </Link>
             </div>
 
-            {/* Range de data (De / Até) — só aparece se há OS pra filtrar. */}
-            {orders.length > 0 && (
-                <div className="mb-6 flex flex-wrap gap-3 items-end bg-black border border-neutral-800 rounded-lg p-3">
-                    <div className="flex flex-col gap-1">
-                        <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Data da OS — De</label>
-                        <input
-                            type="date"
-                            value={dateStart}
-                            max={dateEnd || undefined}
-                            onChange={(e) => setDateStart(e.target.value)}
-                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Até</label>
-                        <input
-                            type="date"
-                            value={dateEnd}
-                            min={dateStart || undefined}
-                            onChange={(e) => setDateEnd(e.target.value)}
-                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-                        />
-                    </div>
-                    {(dateStart || dateEnd) && (
-                        <button
-                            type="button"
-                            onClick={() => { setDateStart(''); setDateEnd('') }}
-                            className="text-xs text-red-400 hover:text-red-300 underline px-2 py-2 whitespace-nowrap"
-                        >
-                            Limpar data
-                        </button>
-                    )}
-                    <p className="text-[11px] text-gray-500 ml-auto self-center">
+            <div className="mb-4 relative">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                    type="text"
+                    value={searchText}
+                    onChange={(e) => setSearchText(e.target.value)}
+                    placeholder="Buscar por placa, cliente, nº da OS ou modelo..."
+                    className="w-full bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg pl-9 pr-9 py-2.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition"
+                />
+                {searchText && (
+                    <button
+                        type="button"
+                        onClick={() => setSearchText('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition"
+                        title="Limpar busca"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                )}
+            </div>
+
+            <div className="mb-4 flex gap-2 overflow-x-auto pb-2 items-center">
+                {['Todos', 'Em Terceiros', 'Aberto', 'Em Andamento', 'Concluido', 'Cancelado', 'Orçamento'].map(status => (
+                    <button
+                        key={status}
+                        onClick={() => setFilterStatus(status)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all whitespace-nowrap ${filterStatus === status
+                            ? 'bg-blue-600 text-white border-blue-500'
+                            : 'bg-neutral-800 text-gray-400 border-neutral-700 hover:border-gray-500'
+                            }`}
+                    >
+                        {status}
+                    </button>
+                ))}
+                {(searchText || filterStatus !== 'Todos' || dateStart || dateEnd) && (
+                    <span className="ml-auto text-xs text-gray-500 whitespace-nowrap">
                         {filteredOrders.length} de {orders.length}
-                    </p>
+                    </span>
+                )}
+            </div>
+
+            {/* Range de data (De / Até) sobre created_at. */}
+            <div className="mb-6 flex flex-wrap gap-3 items-end bg-black border border-neutral-800 rounded-lg p-3">
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Data da OS — De</label>
+                    <input
+                        type="date"
+                        value={dateStart}
+                        max={dateEnd || undefined}
+                        onChange={(e) => setDateStart(e.target.value)}
+                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
                 </div>
-            )}
+                <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Até</label>
+                    <input
+                        type="date"
+                        value={dateEnd}
+                        min={dateStart || undefined}
+                        onChange={(e) => setDateEnd(e.target.value)}
+                        className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg p-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
+                    />
+                </div>
+                {(dateStart || dateEnd) && (
+                    <button
+                        type="button"
+                        onClick={() => { setDateStart(''); setDateEnd('') }}
+                        className="text-xs text-red-400 hover:text-red-300 underline px-2 py-2 whitespace-nowrap"
+                    >
+                        Limpar data
+                    </button>
+                )}
+            </div>
 
             {orders.length === 0 ? (
                 <div className="text-center py-10 text-gray-500 border border-dashed border-neutral-800 rounded-lg">
@@ -95,10 +181,10 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                 </div>
             ) : filteredOrders.length === 0 ? (
                 <div className="text-center py-10 text-gray-500 border border-dashed border-neutral-800 rounded-lg">
-                    Nenhuma OS no período selecionado.
+                    Nenhuma OS para os filtros aplicados.
                     <button
                         type="button"
-                        onClick={() => { setDateStart(''); setDateEnd('') }}
+                        onClick={() => { setSearchText(''); setFilterStatus('Todos'); setDateStart(''); setDateEnd('') }}
                         className="block mx-auto mt-2 text-xs text-red-400 hover:text-red-300 underline"
                     >
                         Limpar filtros
@@ -114,6 +200,7 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                                 <th className="px-4 py-3">Veículo</th>
                                 <th className="px-4 py-3">Data</th>
                                 <th className="px-4 py-3">Total</th>
+                                <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3 rounded-tr-lg text-right">Ações</th>
                             </tr>
                         </thead>
@@ -121,7 +208,7 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                             {pagination.paginatedItems.map((order) => (
                                 <tr key={order.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
                                     <td className="px-4 py-3 font-medium text-white">#{order.id}</td>
-                                    <td className="px-4 py-3">{order.clients?.name || order.client_label || order.observation || 'Avulso'}</td>
+                                    <td className="px-4 py-3">{formatClient(order)}</td>
                                     <td className="px-4 py-3">
                                         <div className="text-white">{order.vehicle_plate}</div>
                                         <div className="text-xs text-gray-500">{order.vehicle_model}</div>
@@ -129,6 +216,17 @@ export default function ThirdPartyOrderList({ initialOrders }) {
                                     <td className="px-4 py-3">{new Date(order.created_at).toLocaleDateString()}</td>
                                     <td className="px-4 py-3 font-medium text-white">
                                         R$ {order.total ? order.total.toFixed(2) : '0.00'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                        {order.is_estimate ? (
+                                            <span className={`px-2 py-1 rounded-md text-xs border ${getStatusColor('Orçamento')}`}>
+                                                Orçamento
+                                            </span>
+                                        ) : (
+                                            <span className={`px-2 py-1 rounded-md text-xs border ${getStatusColor(order.status)}`}>
+                                                {order.status}
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3 text-right flex items-center justify-end gap-3">
                                         <Link

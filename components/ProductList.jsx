@@ -8,7 +8,7 @@ import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FileText, AlertCircle, X as XIcon, Printer, ListChecks } from 'lucide-react'
+import { FileText, AlertCircle, X as XIcon, Printer, ListChecks, ClipboardList } from 'lucide-react'
 import LowStockReport from './LowStockReport'
 import StockListingReport from './StockListingReport'
 import Pagination, { usePagination } from './Pagination'
@@ -616,6 +616,13 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                         title="Lançar nota fiscal — XML ou manual"
                     >
                         <FileText className="w-4 h-4" /> Entrada de Nota Fiscal
+                    </Link>
+                    <Link
+                        href="/stock/inventory"
+                        className="bg-neutral-800 hover:bg-neutral-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border border-neutral-700 flex items-center gap-2"
+                        title="Inventário — contagem física do estoque"
+                    >
+                        <ClipboardList className="w-4 h-4" /> Inventário
                     </Link>
                     <button
                         onClick={handleNew}

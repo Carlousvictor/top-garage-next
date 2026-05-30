@@ -1,5 +1,6 @@
 "use client"
 import { useState } from 'react'
+import Link from 'next/link'
 import { createClient } from '../utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
@@ -235,7 +236,11 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                 body: JSON.stringify({
                     items: cart.map(item => ({
                         product_id: item.product_id,
+                        // name + unit_price vão pro items_snapshot da transação,
+                        // permitindo exibir/imprimir os itens da venda depois.
+                        name: item.name,
                         quantity: item.quantity,
+                        unit_price: item.unit_price,
                     })),
                     clientLabel,
                     paymentMethod,
@@ -321,7 +326,15 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
         <div className="bg-neutral-900 p-6 rounded-lg shadow-xl border border-neutral-800 flex flex-col md:flex-row gap-6 print:hidden">
             {/* Products Selection */}
             <div className="flex-1">
-                <h2 className="text-2xl font-bold text-white mb-4">Ponto de Venda (PDV)</h2>
+                <div className="flex justify-between items-center mb-4 flex-wrap gap-2">
+                    <h2 className="text-2xl font-bold text-white">Ponto de Venda (PDV)</h2>
+                    <Link
+                        href="/pdv/sales"
+                        className="bg-neutral-700 hover:bg-neutral-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap"
+                    >
+                        Ver Vendas
+                    </Link>
+                </div>
 
                 <div className="flex gap-2 mb-6">
                     <div className="flex-1">
