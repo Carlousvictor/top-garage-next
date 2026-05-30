@@ -7,7 +7,7 @@ export default async function ServiceOrderListPage() {
         .from('service_orders')
         .select(`
             *,
-            clients (name)
+            clients (name, client_number)
         `)
         .order('created_at', { ascending: false })
 

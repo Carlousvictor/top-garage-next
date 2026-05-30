@@ -13,15 +13,18 @@ function formatBRL(v) {
     return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Quantidade a pedir = o que falta para repor exatamente o estoque mínimo.
+// Ex.: min=3, atual=2 -> pedir 1. min=3, atual=0 -> pedir 3. min=3, atual=3 -> pedir 0.
+// Item sem mínimo mas com estoque negativo: pedir o saldo absoluto pra zerar.
 function suggestedQty(p) {
     const min = Number(p.min_quantity || 0)
     const cur = Number(p.quantity || 0)
-    return Math.max(min * 2 - cur, min)
+    if (min <= 0) return cur < 0 ? Math.abs(cur) : 0
+    if (cur >= min) return 0
+    return min - cur
 }
 
-// Pedido de compra só faz sentido pra item que precisa ser comprado de verdade.
-// Exclui ruído de produtos sem mínimo configurado e sem estoque negativo
-// (caso clássico: produto cadastrado mas sem reposição definida).
+// Pedido só inclui itens que realmente precisam ser comprados.
 function isOrderable(p) {
     return suggestedQty(p) > 0
 }
@@ -259,7 +262,7 @@ export default function LowStockReport({ products = [] }) {
                     <section className="border border-gray-400 px-3 py-2 mb-6">
                         <h4 className="text-[10px] font-bold uppercase tracking-[0.15em] mb-1 text-gray-800">Observações</h4>
                         <ul className="text-[10px] leading-relaxed list-disc pl-4 space-y-0.5 text-gray-800">
-                            <li>Quantidade sugerida calculada como <span className="font-mono">2 × qtd mínima − qtd atual</span> (piso de 1× qtd mín).</li>
+                            <li>Quantidade sugerida calculada como <span className="font-mono">qtd mínima − qtd atual</span> (repõe exatamente até o mínimo).</li>
                             <li><strong>Último valor de compra</strong> = valor pago na última nota fiscal lançada para o item (campo <span className="font-mono">cost_price</span>).</li>
                             <li>Confirme valores e disponibilidade com o fornecedor antes de fechar o pedido — preços podem ter variado.</li>
                             <li>Itens sem fornecedor cadastrado aparecem ao final agrupados como &quot;Sem fornecedor&quot;.</li>

@@ -1,5 +1,5 @@
 "use client"
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { fetchVehicleByPlate } from '../services/vehicleApi'
 import { useToast } from '../context/ToastContext'
 import { useConfirm } from '../context/ConfirmContext'
@@ -23,6 +23,47 @@ export default function ClientList({ initialClients }) {
     const [vehicles, setVehicles] = useState([])
     const [newVehicle, setNewVehicle] = useState(EMPTY_VEHICLE)
     const [searchText, setSearchText] = useState('')
+    const [duplicateWarning, setDuplicateWarning] = useState(null)
+
+    // Check live de duplicado conforme o usuário preenche o formulário.
+    // Dispara quando documento estiver preenchido OU (nome + telefone) ambos preenchidos.
+    useEffect(() => {
+        if (!isEditing) return
+        const name = (currentClient.name || '').trim()
+        const phone = (currentClient.phone || '').replace(/\D/g, '')
+        const doc = (currentClient.document || '').replace(/\D/g, '')
+
+        const shouldCheck = doc.length >= 11 || (name.length >= 3 && phone.length >= 8)
+        if (!shouldCheck) {
+            setDuplicateWarning(null)
+            return
+        }
+
+        const controller = new AbortController()
+        const timer = setTimeout(async () => {
+            try {
+                const params = new URLSearchParams()
+                if (name) params.set('name', name)
+                if (phone) params.set('phone', phone)
+                if (doc) params.set('document', doc)
+                if (currentClient.id) params.set('excludeId', currentClient.id)
+                const res = await fetch(`/api/clients/check-duplicate?${params}`, {
+                    credentials: 'include',
+                    signal: controller.signal,
+                })
+                if (!res.ok) return
+                const json = await res.json()
+                setDuplicateWarning(json.duplicate ? { ...json.duplicate, reason: json.reason } : null)
+            } catch (err) {
+                if (err.name !== 'AbortError') console.error(err)
+            }
+        }, 400)
+
+        return () => {
+            controller.abort()
+            clearTimeout(timer)
+        }
+    }, [isEditing, currentClient.name, currentClient.phone, currentClient.document, currentClient.id])
 
     const fetchVehicles = async (clientId) => {
         const res = await fetch(`/api/vehicles/by-client?client_id=${clientId}`, { credentials: 'include' })
@@ -33,6 +74,7 @@ export default function ClientList({ initialClients }) {
     const handleEdit = (client) => {
         setCurrentClient(client)
         setSaveError('')
+        setDuplicateWarning(null)
         setNewVehicle(EMPTY_VEHICLE)
         fetchVehicles(client.id)
         setIsEditing(true)
@@ -43,6 +85,7 @@ export default function ClientList({ initialClients }) {
         setVehicles([])
         setNewVehicle(EMPTY_VEHICLE)
         setSaveError('')
+        setDuplicateWarning(null)
         setIsEditing(true)
     }
 
@@ -92,13 +135,19 @@ export default function ClientList({ initialClients }) {
     const handleDelete = async (id) => {
         const ok = await confirm({ title: 'Excluir cliente', message: 'Tem certeza que deseja excluir este cliente?', confirmLabel: 'Excluir', danger: true })
         if (!ok) return
-        const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE', credentials: 'include' })
-        if (res.ok) {
-            const json = await res.json()
-            // Refresh list after delete
+        try {
+            const res = await fetch(`/api/clients?id=${id}`, { method: 'DELETE', credentials: 'include' })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) {
+                toast.error(json.error || `Erro ao excluir cliente (HTTP ${res.status}).`)
+                return
+            }
             const r2 = await fetch('/api/clients', { credentials: 'include' })
             const j2 = await r2.json()
             setClients(j2.clients || clients.filter(c => c.id !== id))
+            toast.success('Cliente excluído com sucesso.')
+        } catch (err) {
+            toast.error('Erro ao excluir cliente: ' + (err?.message || 'falha de rede'))
         }
     }
 
@@ -182,7 +231,8 @@ export default function ClientList({ initialClients }) {
             normalize(c.name).includes(q) ||
             normalize(c.phone).includes(q) ||
             normalize(c.email).includes(q) ||
-            normalize(c.document).includes(q)
+            normalize(c.document).includes(q) ||
+            normalize(c.client_number).includes(q)
         )
     })()
 
@@ -210,7 +260,7 @@ export default function ClientList({ initialClients }) {
                             type="text"
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
-                            placeholder="Buscar por nome, telefone, e-mail ou CPF/CNPJ..."
+                            placeholder="Buscar por nº, nome, telefone, e-mail ou CPF/CNPJ..."
                             className="w-full bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg pl-9 pr-9 py-2.5 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
                         />
                         {searchText && (
@@ -228,6 +278,7 @@ export default function ClientList({ initialClients }) {
                         <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs text-gray-200 uppercase bg-black">
                             <tr>
+                                <th className="px-6 py-3 w-20">#</th>
                                 <th className="px-6 py-3">Nome</th>
                                 <th className="px-6 py-3">E-mail</th>
                                 <th className="px-6 py-3">Telefone</th>
@@ -237,6 +288,9 @@ export default function ClientList({ initialClients }) {
                         <tbody>
                             {pagination.paginatedItems.map((client) => (
                                 <tr key={client.id} className="border-b border-neutral-800 hover:bg-neutral-800">
+                                    <td className="px-6 py-4 font-mono text-gray-300">
+                                        {client.client_number != null ? `#${client.client_number}` : '—'}
+                                    </td>
                                     <td className="px-6 py-4 font-medium text-white">{client.name}</td>
                                     <td className="px-6 py-4">{client.email || '-'}</td>
                                     <td className="px-6 py-4">{client.phone || '-'}</td>
@@ -247,11 +301,11 @@ export default function ClientList({ initialClients }) {
                                 </tr>
                             ))}
                             {clients.length === 0 && (
-                                <tr><td colSpan="4" className="px-6 py-4 text-center">Nenhum cliente cadastrado.</td></tr>
+                                <tr><td colSpan="5" className="px-6 py-4 text-center">Nenhum cliente cadastrado.</td></tr>
                             )}
                             {clients.length > 0 && filteredClients.length === 0 && (
                                 <tr>
-                                    <td colSpan="4" className="px-6 py-4 text-center text-gray-400">
+                                    <td colSpan="5" className="px-6 py-4 text-center text-gray-400">
                                         Nenhum cliente para essa busca.
                                         <button type="button" onClick={() => setSearchText('')} className="ml-2 text-red-400 hover:text-red-300 underline">Limpar</button>
                                     </td>
@@ -272,7 +326,11 @@ export default function ClientList({ initialClients }) {
                 </>
             ) : (
                 <form onSubmit={handleSave} className="bg-black p-6 rounded-lg border border-neutral-800">
-                    <h3 className="text-lg font-bold text-white mb-4">{currentClient.id ? 'Editar Cliente' : 'Novo Cliente'}</h3>
+                    <h3 className="text-lg font-bold text-white mb-4">
+                        {currentClient.id
+                            ? `Editar Cliente${currentClient.client_number != null ? ` #${currentClient.client_number}` : ''}`
+                            : 'Novo Cliente'}
+                    </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-300 mb-1">Nome Completo</label>
@@ -448,6 +506,24 @@ export default function ClientList({ initialClients }) {
                         </div>
                     </div>
 
+                    {duplicateWarning && (
+                        <div className="mt-4 bg-yellow-500/10 border border-yellow-500/40 text-yellow-200 text-sm rounded-lg p-3">
+                            <div className="font-medium">
+                                Já existe cliente com {duplicateWarning.reason === 'document' ? 'este CPF/CNPJ' : 'mesmo nome + telefone'}:
+                            </div>
+                            <div className="mt-1">
+                                <span className="font-bold">
+                                    #{duplicateWarning.client_number ?? '?'} — {duplicateWarning.name}
+                                </span>
+                                {duplicateWarning.phone ? <span className="ml-2 text-yellow-300/80">· {duplicateWarning.phone}</span> : null}
+                                {duplicateWarning.document ? <span className="ml-2 text-yellow-300/80">· {duplicateWarning.document}</span> : null}
+                            </div>
+                            <div className="text-xs text-yellow-300/70 mt-1">
+                                Para evitar duplicidade, edite o cliente existente em vez de criar um novo.
+                            </div>
+                        </div>
+                    )}
+
                     {saveError && (
                         <div className="mt-4 bg-red-500/10 border border-red-500/30 text-red-300 text-sm rounded-lg p-3">
                             {saveError}
@@ -455,7 +531,12 @@ export default function ClientList({ initialClients }) {
                     )}
 
                     <div className="flex gap-4 pt-6">
-                        <button type="submit" disabled={loading} className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium disabled:opacity-50">
+                        <button
+                            type="submit"
+                            disabled={loading || (!!duplicateWarning && !currentClient.id)}
+                            title={duplicateWarning && !currentClient.id ? 'Cliente duplicado — não é possível criar.' : ''}
+                            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
                             {loading ? 'Salvando...' : 'Salvar'}
                         </button>
                         <button type="button" onClick={() => setIsEditing(false)} className="bg-neutral-700 hover:bg-neutral-600 text-gray-200 px-5 py-2.5 rounded-lg font-medium">

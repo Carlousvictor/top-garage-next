@@ -2,10 +2,75 @@ import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
 
 async function getTenantId(supabase, user) {
-    const { data: p } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).single()
+    const { data: p } = await supabase.from('profiles').select('tenant_id').eq('user_id', user.id).maybeSingle()
     if (p?.tenant_id) return p.tenant_id
-    const { data: p2 } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()
+    const { data: p2 } = await supabase.from('profiles').select('tenant_id').eq('id', user.id).maybeSingle()
     return p2?.tenant_id ?? null
+}
+
+function normalizeDocument(doc) {
+    if (!doc) return null
+    const digits = String(doc).replace(/\D/g, '')
+    return digits || null
+}
+
+function normalizePhone(phone) {
+    if (!phone) return null
+    const digits = String(phone).replace(/\D/g, '')
+    return digits || null
+}
+
+function normalizeName(name) {
+    if (!name) return null
+    return String(name).trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+// Procura cliente duplicado por nome+telefone (normalizados) ou por documento.
+// Retorna o primeiro match encontrado, ou null.
+async function findDuplicate(supabase, tenantId, { name, phone, document, excludeId }) {
+    const nameNorm = normalizeName(name)
+    const phoneNorm = normalizePhone(phone)
+    const docNorm = normalizeDocument(document)
+
+    // 1) Documento sempre tem prioridade (mais confiável)
+    if (docNorm) {
+        let q = supabase
+            .from('clients')
+            .select('id, client_number, name, phone, document')
+            .eq('tenant_id', tenantId)
+            .eq('document', docNorm)
+        if (excludeId) q = q.neq('id', excludeId)
+        const { data } = await q.maybeSingle()
+        if (data) return { match: data, reason: 'document' }
+    }
+
+    // 2) Nome + telefone (ambos preenchidos)
+    if (nameNorm && phoneNorm) {
+        let q = supabase
+            .from('clients')
+            .select('id, client_number, name, phone, document')
+            .eq('tenant_id', tenantId)
+            .ilike('name', nameNorm)
+        if (excludeId) q = q.neq('id', excludeId)
+        const { data: rows } = await q
+        const match = (rows || []).find(r => normalizePhone(r.phone) === phoneNorm)
+        if (match) return { match, reason: 'name_phone' }
+    }
+
+    return null
+}
+
+async function nextClientNumber(supabase, tenantId) {
+    const { data, error } = await supabase
+        .from('clients')
+        .select('client_number')
+        .eq('tenant_id', tenantId)
+        .order('client_number', { ascending: false, nullsFirst: false })
+        .limit(1)
+        .maybeSingle()
+    if (error) throw new Error(error.message)
+    const current = Number(data?.client_number) || 0
+    return current + 1
 }
 
 export async function GET() {
@@ -16,7 +81,12 @@ export async function GET() {
     const tenantId = await getTenantId(supabase, user)
     if (!tenantId) return NextResponse.json({ clients: [] })
 
-    const { data, error } = await supabase.from('clients').select('*').eq('tenant_id', tenantId).order('name')
+    const { data, error } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('client_number', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true })
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ clients: data || [] })
 }
@@ -34,25 +104,72 @@ export async function POST(request) {
 
     if (!name?.trim()) return NextResponse.json({ error: 'Nome é obrigatório.' }, { status: 400 })
 
+    const docNorm = normalizeDocument(document)
+
     if (id) {
+        // Atualização — bloqueia duplicate por (document) ou (nome+telefone)
+        const dup = await findDuplicate(supabase, tenantId, { name, phone, document, excludeId: id })
+        if (dup) {
+            const label = dup.reason === 'document' ? 'CPF/CNPJ' : 'nome + telefone'
+            return NextResponse.json(
+                { error: `${label} já cadastrado para o cliente #${dup.match.client_number ?? '?'} (${dup.match.name}).`, duplicate: dup.match },
+                { status: 409 }
+            )
+        }
+
         const { error } = await supabase
             .from('clients')
-            .update({ name: name.trim(), email: email || null, phone: phone || null, document: document || null })
+            .update({
+                name: name.trim(),
+                email: email || null,
+                phone: phone || null,
+                document: docNorm,
+            })
             .eq('id', id)
             .eq('tenant_id', tenantId)
         if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     } else {
-        const { data: newClient, error } = await supabase
-            .from('clients')
-            .insert([{ tenant_id: tenantId, name: name.trim(), email: email || null, phone: phone || null, document: document || null }])
-            .select()
-            .single()
-        if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+        // Criação — bloqueia duplicate por (document) ou (nome+telefone)
+        const dup = await findDuplicate(supabase, tenantId, { name, phone, document })
+        if (dup) {
+            const label = dup.reason === 'document' ? 'CPF/CNPJ' : 'nome + telefone'
+            return NextResponse.json(
+                { error: `${label} já cadastrado para o cliente #${dup.match.client_number ?? '?'} (${dup.match.name}).`, duplicate: dup.match },
+                { status: 409 }
+            )
+        }
+
+        let attempt = 0
+        let inserted = null
+        let lastError = null
+        while (attempt < 3 && !inserted) {
+            const nextNum = await nextClientNumber(supabase, tenantId)
+            const { data, error } = await supabase
+                .from('clients')
+                .insert([{
+                    tenant_id: tenantId,
+                    client_number: nextNum,
+                    name: name.trim(),
+                    email: email || null,
+                    phone: phone || null,
+                    document: docNorm,
+                }])
+                .select()
+                .single()
+            if (!error) { inserted = data; break }
+            lastError = error
+            // Conflito de unique(tenant_id, client_number) → tenta o próximo
+            if (error.code === '23505') { attempt++; continue }
+            return NextResponse.json({ error: error.message }, { status: 400 })
+        }
+        if (!inserted) {
+            return NextResponse.json({ error: lastError?.message || 'Não foi possível gerar número de cliente.' }, { status: 400 })
+        }
 
         if (vehicles.length > 0) {
             const vehiclesPayload = vehicles.map(v => ({
                 tenant_id: tenantId,
-                client_id: newClient.id,
+                client_id: inserted.id,
                 plate: v.plate?.toUpperCase() || null,
                 brand: v.brand || null,
                 model: v.model || null,
@@ -72,14 +189,19 @@ export async function POST(request) {
         }
     }
 
-    // Return updated client list
-    const { data: clients } = await supabase.from('clients').select('*').eq('tenant_id', tenantId).order('name')
+    const { data: clients } = await supabase
+        .from('clients')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('client_number', { ascending: true, nullsFirst: false })
+        .order('name', { ascending: true })
     return NextResponse.json({ clients: clients || [] })
 }
 
 export async function DELETE(request) {
     const { searchParams } = new URL(request.url)
     const id = searchParams.get('id')
+    const force = searchParams.get('force') === '1'
     if (!id) return NextResponse.json({ error: 'id é obrigatório.' }, { status: 400 })
 
     const supabase = await createClient()
@@ -87,7 +209,45 @@ export async function DELETE(request) {
     if (userError || !user) return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
 
     const tenantId = await getTenantId(supabase, user)
-    const { error } = await supabase.from('clients').delete().eq('id', id).eq('tenant_id', tenantId)
+    if (!tenantId) return NextResponse.json({ error: 'Empresa não encontrada.' }, { status: 403 })
+
+    // Confirma que o cliente existe e pertence ao tenant
+    const { data: client } = await supabase
+        .from('clients')
+        .select('id, client_number, name')
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
+    if (!client) {
+        return NextResponse.json({ error: 'Cliente não encontrado ou já excluído.' }, { status: 404 })
+    }
+
+    // Pre-check dependências
+    const [{ count: vehiclesCount }, { count: ordersCount }, { count: txCount }] = await Promise.all([
+        supabase.from('vehicles').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
+        supabase.from('service_orders').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
+        supabase.from('transactions').select('id', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('client_id', id),
+    ])
+
+    const deps = []
+    if (vehiclesCount) deps.push(`${vehiclesCount} veículo(s)`)
+    if (ordersCount) deps.push(`${ordersCount} ordem(ns) de serviço`)
+    if (txCount) deps.push(`${txCount} transação(ões)`)
+
+    if (deps.length > 0 && !force) {
+        return NextResponse.json({
+            error: `Cliente #${client.client_number ?? '?'} (${client.name}) possui ${deps.join(', ')} associada(s). Exclua/transfira esses registros antes de remover o cliente.`,
+            dependencies: { vehicles: vehiclesCount || 0, service_orders: ordersCount || 0, transactions: txCount || 0 },
+        }, { status: 409 })
+    }
+
+    const { error } = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', id)
+        .eq('tenant_id', tenantId)
+
     if (error) return NextResponse.json({ error: error.message }, { status: 400 })
     return NextResponse.json({ success: true })
 }

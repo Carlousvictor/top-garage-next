@@ -139,7 +139,11 @@ export default function ServiceOrderPrint({ order, items, client, vehicle, payme
                         <h3 className="font-bold uppercase bg-gray-100 px-1 py-0.5 mb-2">Cliente</h3>
                         <div className="grid grid-cols-[70px_1fr] gap-1">
                             <span className="font-bold">Nome:</span>
-                            <span>{client?.name?.toUpperCase() || 'CONSUMIDOR FINAL'}</span>
+                            <span>
+                                {client?.name
+                                    ? `${client.name.toUpperCase()}${client.client_number != null ? ` (#${client.client_number})` : ''}`
+                                    : 'CONSUMIDOR FINAL'}
+                            </span>
                             <span className="font-bold">Tel:</span>
                             <span>{client?.phone || '—'}</span>
                             <span className="font-bold">E-mail:</span>

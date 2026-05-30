@@ -9,7 +9,7 @@ export default async function PDVPage() {
     // (mesmo bug que clients tinha — products carregava no client e às vezes vinha vazio).
     const supabase = await createClient()
     const [{ data: clients }, { data: products }] = await Promise.all([
-        supabase.from('clients').select('id, name').order('name'),
+        supabase.from('clients').select('id, name, client_number').order('client_number', { ascending: true, nullsFirst: false }).order('name'),
         supabase.from('products').select('*').order('name'),
     ])
 

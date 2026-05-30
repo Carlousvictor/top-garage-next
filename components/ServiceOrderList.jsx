@@ -23,6 +23,11 @@ export default function ServiceOrderList({ initialOrders }) {
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
 
+    const formatClient = (c) => {
+        if (!c?.name) return 'Consumidor'
+        return c.client_number != null ? `${c.name} (#${c.client_number})` : c.name
+    }
+
     const filteredOrders = (() => {
         let list = orders
         if (filterStatus === 'Orçamento') {
@@ -40,6 +45,7 @@ export default function ServiceOrderList({ initialOrders }) {
             list = list.filter(o =>
                 normalize(o.vehicle_plate).includes(q) ||
                 normalize(o.clients?.name).includes(q) ||
+                normalize(o.clients?.client_number).includes(q) ||
                 normalize(o.id).includes(q) ||
                 normalize(o.vehicle_model).includes(q)
             )
@@ -203,7 +209,7 @@ export default function ServiceOrderList({ initialOrders }) {
                             {pagination.paginatedItems.map((order) => (
                                 <tr key={order.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
                                     <td className="px-4 py-3 font-medium text-white">#{order.id}</td>
-                                    <td className="px-4 py-3">{order.clients?.name || 'Consumidor'}</td>
+                                    <td className="px-4 py-3">{formatClient(order.clients)}</td>
                                     <td className="px-4 py-3">
                                         <div className="text-white">{order.vehicle_plate}</div>
                                         <div className="text-xs text-gray-500">{order.vehicle_model}</div>

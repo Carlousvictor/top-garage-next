@@ -44,7 +44,12 @@ const selectStyles = {
     dropdownIndicator: (base) => ({ ...base, color: '#9ca3af' })
 }
 
-export default function ServiceOrderForm({ 
+const formatClientLabel = (c) => {
+    if (!c?.name) return ''
+    return c.client_number != null ? `${c.name} (#${c.client_number})` : c.name
+}
+
+export default function ServiceOrderForm({
     order, 
     initialClients = [], 
     initialProducts = [], 
@@ -646,7 +651,7 @@ export default function ServiceOrderForm({
                                     noOptionsMessage={() => 'Nenhum cadastro — pode digitar livremente.'}
                                     value={(() => {
                                         const c = clients.find(x => String(x.id) === String(clientId))
-                                        if (c) return { value: c.id, label: c.name }
+                                        if (c) return { value: c.id, label: formatClientLabel(c) }
                                         if (clientLabel) return { value: clientLabel, label: clientLabel, __isNew__: true }
                                         return null
                                     })()}
@@ -674,7 +679,7 @@ export default function ServiceOrderForm({
                                             setClientInputText('')
                                         }
                                     }}
-                                    options={clients.map(c => ({ value: c.id, label: c.name }))}
+                                    options={clients.map(c => ({ value: c.id, label: formatClientLabel(c) }))}
                                     styles={selectStyles}
                                 />
                             ) : (
@@ -682,10 +687,10 @@ export default function ServiceOrderForm({
                                     instanceId="os-client"
                                     value={(() => {
                                         const c = clients.find(x => String(x.id) === String(clientId))
-                                        return c ? { value: c.id, label: c.name } : null
+                                        return c ? { value: c.id, label: formatClientLabel(c) } : null
                                     })()}
                                     onChange={(opt) => setClientId(opt?.value || '')}
-                                    options={clients.map(c => ({ value: c.id, label: c.name }))}
+                                    options={clients.map(c => ({ value: c.id, label: formatClientLabel(c) }))}
                                     placeholder={isEstimate ? 'Selecione um cliente ou deixe em branco (Consumidor)...' : 'Selecione um cliente...'}
                                     styles={selectStyles}
                                     isClearable

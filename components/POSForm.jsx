@@ -453,7 +453,10 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                             placeholder='Buscar, digitar ou deixar como "Consumidor"...'
                             formatCreateLabel={(input) => `Usar: "${input}"`}
                             noOptionsMessage={() => 'Nenhum cadastro encontrado — pode digitar o nome livremente.'}
-                            options={clients.map(c => ({ value: c.id, label: c.name }))}
+                            options={clients.map(c => ({
+                                value: c.id,
+                                label: c.client_number != null ? `${c.name} (#${c.client_number})` : c.name,
+                            }))}
                             value={selectedClient}
                             onChange={(opt) => {
                                 setSelectedClient(opt)

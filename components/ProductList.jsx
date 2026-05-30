@@ -8,8 +8,9 @@ import Select from 'react-select'
 import CreatableSelect from 'react-select/creatable'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { FileText, AlertCircle, X as XIcon, Printer } from 'lucide-react'
+import { FileText, AlertCircle, X as XIcon, Printer, ListChecks } from 'lucide-react'
 import LowStockReport from './LowStockReport'
+import StockListingReport from './StockListingReport'
 import Pagination, { usePagination } from './Pagination'
 
 export default function ProductList({ initialProducts, initialSuppliers, initialCategories, initialBrands }) {
@@ -21,6 +22,10 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     const confirm = useConfirm()
 
     const [products, setProducts] = useState(initialProducts || [])
+    // Qual relatório está armado para impressão. 'order' = pedido (estoque baixo);
+    // 'listing' = listagem completa. Resetado depois do print pra esconder ambos no DOM.
+    const [printMode, setPrintMode] = useState(null)
+    const [printRefreshing, setPrintRefreshing] = useState(false)
     const [suppliers, setSuppliers] = useState(initialSuppliers || [])
     const [categories, setCategories] = useState(initialCategories || [])
     const [brands, setBrands] = useState(initialBrands || [])
@@ -336,6 +341,56 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
     // Usada pra mostrar o badge no toggle.
     const lowStockCount = products.filter(isLowStock).length
 
+    // Refaz fetch dos produtos antes de imprimir pra garantir que a quantidade
+    // atual no relatório seja exatamente a do banco — evita imprimir snapshot
+    // desatualizado (cenário em que outra aba/usuário deu baixa).
+    const refreshProducts = async () => {
+        if (!tenantId) return products
+        const { data, error } = await supabase
+            .from('products')
+            .select('*, suppliers(name), brands(name), categories(name)')
+            .eq('tenant_id', tenantId)
+            .order('name', { ascending: true })
+        if (error) {
+            toast.error('Falha ao atualizar estoque antes da impressão: ' + error.message)
+            return products
+        }
+        setProducts(data || [])
+        return data || []
+    }
+
+    const triggerPrint = async (mode) => {
+        setPrintRefreshing(true)
+        try {
+            await refreshProducts()
+        } finally {
+            setPrintRefreshing(false)
+        }
+        // Só arma o modo de impressão. O useEffect abaixo dispara window.print()
+        // DEPOIS que o React montou o relatório no DOM. Chamar print() na mesma
+        // função (mesmo com flushSync) era frágil e às vezes não abria o diálogo.
+        setPrintMode(mode)
+    }
+
+    const handlePrintOrder = () => triggerPrint('order')
+    const handlePrintListing = () => triggerPrint('listing')
+
+    // Dispara a impressão assim que o relatório correspondente está no DOM.
+    // requestAnimationFrame garante 1 frame de paint antes do print().
+    useEffect(() => {
+        if (!printMode) return
+        const raf = requestAnimationFrame(() => {
+            window.print()
+        })
+        // Listener pra limpar o printMode quando o diálogo de impressão fechar.
+        const handleAfterPrint = () => setPrintMode(null)
+        window.addEventListener('afterprint', handleAfterPrint)
+        return () => {
+            cancelAnimationFrame(raf)
+            window.removeEventListener('afterprint', handleAfterPrint)
+        }
+    }, [printMode])
+
     // Paginação client-side aplicada sobre o resultado dos filtros existentes.
     const productPagination = usePagination(filteredProducts, 25)
 
@@ -537,13 +592,23 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                     </button>
                     <button
                         type="button"
-                        onClick={() => window.print()}
-                        disabled={lowStockCount === 0}
-                        title={lowStockCount === 0 ? 'Nenhum item abaixo do mínimo' : 'Imprimir relatório de pedido'}
+                        onClick={handlePrintOrder}
+                        disabled={lowStockCount === 0 || printRefreshing}
+                        title={lowStockCount === 0 ? 'Nenhum item abaixo do mínimo' : 'Imprime relatório de pedido com os itens em estoque baixo (atualizado do banco)'}
                         className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                     >
                         <Printer className="w-4 h-4" />
-                        Relatório de pedido
+                        {printRefreshing && printMode === 'order' ? 'Atualizando...' : 'Relatório de pedido'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handlePrintListing}
+                        disabled={products.length === 0 || printRefreshing}
+                        title="Imprime listagem completa do estoque (atualizado do banco)"
+                        className="px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap border bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                        <ListChecks className="w-4 h-4" />
+                        {printRefreshing && printMode === 'listing' ? 'Atualizando...' : 'Imprimir estoque'}
                     </button>
                     <Link
                         href="/import"
@@ -861,7 +926,12 @@ export default function ProductList({ initialProducts, initialSuppliers, initial
                 </form>
             )}
         </div>
-        <LowStockReport products={products.filter(isLowStock)} />
+        {printMode === 'order' && (
+            <LowStockReport products={products.filter(isLowStock)} />
+        )}
+        {printMode === 'listing' && (
+            <StockListingReport products={products} visible={false} />
+        )}
         </>
     )
 }
