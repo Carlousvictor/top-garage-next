@@ -67,6 +67,16 @@ export async function POST(request) {
         return NextResponse.json({ error: 'order_id é obrigatório.' }, { status: 400 })
     }
 
+    // Estado atual da OS — usado pra evitar dupla baixa. Se a OS já baixou estoque
+    // no Salvar (stock_deducted=true), o Finalizar NÃO baixa de novo.
+    const { data: existingOrder } = await supabase
+        .from('service_orders')
+        .select('stock_deducted')
+        .eq('id', order_id)
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+    const alreadyDeducted = existingOrder?.stock_deducted === true
+
     // 1. Update OS — finaliza status + persiste campos pendentes do formulário.
     // Só sobrescrevemos campos opcionais quando vieram explicitamente no body,
     // pra não zerar valores salvos quando um client legado chamar sem eles.
@@ -103,7 +113,10 @@ export async function POST(request) {
     // quando o usuário marca explicitamente `deduct_stock=true`. Se o campo
     // não veio (cliente legado), preserva comportamento antigo (retroativa
     // não baixa).
-    const shouldDeductStock = deduct_stock === true || (deduct_stock === undefined && !is_retroactive)
+    // IMPORTANTE: se a OS já baixou estoque no Salvar (alreadyDeducted), pula a
+    // baixa aqui pra não duplicar. O Salvar já reconciliou o estoque por delta.
+    const shouldDeductStock = !alreadyDeducted &&
+        (deduct_stock === true || (deduct_stock === undefined && !is_retroactive))
     if (shouldDeductStock) {
         for (const item of items) {
             if (item.type === 'product' && item.product_id) {
@@ -121,6 +134,13 @@ export async function POST(request) {
                 }
             }
         }
+        // Marca a OS como baixada pra que reaberturas/edições posteriores
+        // reconciliem por delta em vez de baixar de novo.
+        await supabase
+            .from('service_orders')
+            .update({ stock_deducted: true })
+            .eq('id', order_id)
+            .eq('tenant_id', tenantId)
     }
 
     // 3. Insert financial transaction

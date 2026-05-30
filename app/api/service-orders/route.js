@@ -62,6 +62,34 @@ export async function POST(request) {
     const discNumPersisted = Number(discount_percent)
     const hasDiscountPersisted = Number.isFinite(discNumPersisted) && discNumPersisted > 0
 
+    // Baixa de estoque ao SALVAR: toda OS real (não-orçamento) reflete a saída
+    // das peças imediatamente, sem esperar o "Finalizar". Orçamento nunca baixa.
+    const shouldDeductNow = !(is_estimate || false)
+
+    // Estado anterior da OS (só em edição): se já estava com estoque baixado,
+    // precisamos estornar os itens ANTIGOS antes de baixar os novos — assim a
+    // edição de quantidade/itens reconcilia o estoque por delta, sem dupla baixa.
+    let wasDeducted = false
+    let oldProductItems = []
+    if (id) {
+        const { data: existing } = await supabase
+            .from('service_orders')
+            .select('stock_deducted')
+            .eq('id', id)
+            .eq('tenant_id', tenantId)
+            .maybeSingle()
+        wasDeducted = existing?.stock_deducted === true
+
+        if (wasDeducted) {
+            const { data: prevItems } = await supabase
+                .from('service_order_items')
+                .select('product_id, quantity, type')
+                .eq('service_order_id', id)
+                .eq('tenant_id', tenantId)
+            oldProductItems = (prevItems || []).filter(it => it.type === 'product' && it.product_id)
+        }
+    }
+
     const orderData = {
         tenant_id: tenantId,
         client_id: client_id || null,
@@ -82,6 +110,8 @@ export async function POST(request) {
         // e o campo voltava em branco.
         discount_percent: hasDiscountPersisted ? discNumPersisted : null,
         created_at: service_date_iso || new Date().toISOString(),
+        // Marca se esta OS está com estoque baixado depois deste save.
+        stock_deducted: shouldDeductNow,
     }
 
     let orderId = id || null
@@ -131,6 +161,47 @@ export async function POST(request) {
             .insert(itemsToInsert)
 
         if (itemsError) return NextResponse.json({ error: itemsError.message }, { status: 400 })
+    }
+
+    // Reconciliação de estoque por delta.
+    // delta[product_id] = soma dos ajustes a aplicar no estoque atual:
+    //   + estorno dos itens ANTIGOS (devolve ao estoque) quando a OS já estava baixada
+    //   − baixa dos itens NOVOS quando esta OS é real (não-orçamento)
+    // Agregar por produto evita race quando o mesmo produto aparece 2x e reduz writes.
+    const stockDelta = new Map()
+    const addDelta = (productId, amount) => {
+        if (!productId || !amount) return
+        stockDelta.set(productId, (stockDelta.get(productId) || 0) + amount)
+    }
+
+    // Estorno dos itens antigos (estado já refletido no estoque pelo save anterior).
+    for (const it of oldProductItems) {
+        addDelta(it.product_id, Number(it.quantity) || 0)
+    }
+    // Baixa dos itens novos da versão atual da OS.
+    if (shouldDeductNow) {
+        for (const item of items) {
+            if (item.type === 'product' && item.product_id) {
+                addDelta(item.product_id, -(Number(item.quantity) || 0))
+            }
+        }
+    }
+
+    for (const [productId, delta] of stockDelta) {
+        if (!delta) continue
+        const { data: prod } = await supabase
+            .from('products')
+            .select('quantity')
+            .eq('id', productId)
+            .eq('tenant_id', tenantId)
+            .maybeSingle()
+        if (prod) {
+            await supabase
+                .from('products')
+                .update({ quantity: (Number(prod.quantity) || 0) + delta })
+                .eq('id', productId)
+                .eq('tenant_id', tenantId)
+        }
     }
 
     // Sincroniza desconto + total na transação relacionada (se existir).
