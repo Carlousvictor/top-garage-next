@@ -26,6 +26,7 @@ export default function PDVSalePrint({
     discountAmount,
     total,
     serviceDate,
+    observation,
     tenant,
 }) {
     if (!items || items.length === 0) return null
@@ -189,6 +190,14 @@ export default function PDVSalePrint({
                         </div>
                     </div>
                 </div>
+
+                {/* Observações — só renderiza quando há texto. */}
+                {observation && String(observation).trim() && (
+                    <div className="mb-6 print:break-inside-avoid">
+                        <h3 className="font-bold uppercase bg-gray-100 px-1 py-0.5 text-xs border border-gray-300">Observações</h3>
+                        <p className="text-xs whitespace-pre-wrap border border-gray-300 border-t-0 p-2">{observation}</p>
+                    </div>
+                )}
             </div>
 
             {/* Footer / Assinatura */}

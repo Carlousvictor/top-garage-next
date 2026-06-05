@@ -52,6 +52,7 @@ export async function POST(request) {
         emissionDate,        // YYYY-MM-DD
         items,               // [{ name, sku, ean, quantity, cost_price, margin, selling_price, discount_amount? }]
         freightAmount = 0,
+        otherExpenses = 0,       // soma ao total da NF; NÃO é rateado no custo dos produtos
         discountMode = 'total',  // 'total' | 'per_item'
         discountAmount = 0,      // só usado quando discountMode === 'total'
         paymentMode,             // 'upfront' | 'installments'
@@ -123,12 +124,16 @@ export async function POST(request) {
 
         const sumSubtotals = normalized.reduce((acc, it) => acc + it.subtotal, 0)
         const freight = round2(freightAmount)
+        const otherExp = round2(otherExpenses)
         const totalDiscount = discountMode === 'total' ? round2(discountAmount) : 0
         const perItemDiscTotal = discountMode === 'per_item'
             ? normalized.reduce((acc, it) => acc + it.perItemDisc, 0)
             : 0
 
-        const nfTotal = round2(sumSubtotals + freight - totalDiscount - perItemDiscTotal)
+        // Outras despesas entram só no total da NF (e no financeiro). O rateio
+        // de custo dos produtos abaixo usa apenas frete - desconto, então o
+        // custo/preço de venda de cada item fica inalterado por este campo.
+        const nfTotal = round2(sumSubtotals + freight + otherExp - totalDiscount - perItemDiscTotal)
         if (nfTotal < 0) {
             return NextResponse.json({ error: 'Total da NF ficou negativo após frete/desconto.' }, { status: 400 })
         }
@@ -290,6 +295,20 @@ export async function POST(request) {
             .select('id')
             .single()
         if (entryErr) throw new Error(`Erro registrar entrada: ${entryErr.message}`)
+
+        // other_expenses em update separado: se a coluna ainda não existe
+        // (migration 2026_06_05 não aplicada), o erro é ignorado e a entrada
+        // continua válida — total_value já inclui as outras despesas.
+        if (otherExp > 0) {
+            const { error: oeErr } = await supabase
+                .from('stock_entries')
+                .update({ other_expenses: otherExp })
+                .eq('id', entry.id)
+                .eq('tenant_id', tenantId)
+            if (oeErr) {
+                console.warn('[stock/manual-entry] other_expenses não gravado (rode a migration 2026_06_05_add_other_expenses_to_stock_entries):', oeErr.message)
+            }
+        }
 
         // 5. stock_entry_items
         const finalEntryItems = stockEntryItemsRows.map(row => ({ ...row, stock_entry_id: entry.id }))

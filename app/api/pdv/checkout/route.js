@@ -54,6 +54,7 @@ export async function POST(request) {
         discountPercent = 0,
         subtotalAmount = null,
         discountAmount = null,
+        observation = null,
         total,
         service_date_iso,
         deduct_stock,
@@ -157,6 +158,21 @@ export async function POST(request) {
         if (snapErr) {
             // Não é fatal — só significa que a coluna ainda não foi criada.
             console.warn('[pdv/checkout] items_snapshot não gravado (rode a migration 2026_05_30_add_items_snapshot_to_transactions):', snapErr.message)
+        }
+    }
+
+    // 3c. Observação livre — update separado e defensivo (mesma lógica do
+    // items_snapshot): se a coluna observation ainda não existe (migration
+    // 2026_06_05 não aplicada), o erro é ignorado e a venda continua válida.
+    const obsClean = (typeof observation === 'string' && observation.trim()) ? observation.trim() : null
+    if (obsClean) {
+        const { error: obsErr } = await supabase
+            .from('transactions')
+            .update({ observation: obsClean })
+            .eq('id', txRow.id)
+            .eq('tenant_id', tenantId)
+        if (obsErr) {
+            console.warn('[pdv/checkout] observation não gravada (rode a migration 2026_06_05_add_observation_to_transactions):', obsErr.message)
         }
     }
 

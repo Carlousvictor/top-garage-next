@@ -1,10 +1,13 @@
 "use client"
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '../context/AuthContext'
-import { Search, X, Eye, Printer } from 'lucide-react'
+import { useToast } from '../context/ToastContext'
+import { Search, X, Eye, Printer, FileText, Trash2 } from 'lucide-react'
 import Pagination, { usePagination } from './Pagination'
 import PDVSalePrint from './PDVSalePrint'
+import PDVConsolidatedPrint from './PDVConsolidatedPrint'
 
 // Listagem das vendas do PDV (balcão). Espelha a UX da ServiceOrderList:
 // busca livre + filtro de status (pills) + range de data + paginação.
@@ -15,12 +18,23 @@ import PDVSalePrint from './PDVSalePrint'
 // derivamos esses campos por parsing (só pra exibição — nada é re-gravado).
 export default function PDVSalesList({ initialSales }) {
     const { tenant } = useAuth()
-    const [sales] = useState(initialSales || [])
+    const router = useRouter()
+    const toast = useToast()
+    const [sales, setSales] = useState(initialSales || [])
     const [filterStatus, setFilterStatus] = useState('Todas')
+    // Exclusão de venda — estorna estoque (opcional) e remove o lançamento.
+    const [deleteTarget, setDeleteTarget] = useState(null)
+    const [restockOnDelete, setRestockOnDelete] = useState(true)
+    const [deleting, setDeleting] = useState(false)
     const [searchText, setSearchText] = useState('')
     const [dateStart, setDateStart] = useState('')
     const [dateEnd, setDateEnd] = useState('')
     const [selectedSale, setSelectedSale] = useState(null)
+    // Seleção p/ relatório consolidado de pendências — só vendas em aberto.
+    // Guarda ids (sobrevive a mudança de filtro/página).
+    const [selectedIds, setSelectedIds] = useState(() => new Set())
+    const [consolidatedOpen, setConsolidatedOpen] = useState(false)
+    const [reportType, setReportType] = useState('synthetic') // 'synthetic' | 'analytic'
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
 
@@ -90,6 +104,7 @@ export default function PDVSalesList({ initialSales }) {
             subtotal: selectedSale.subtotal_amount,
             discountPercent: selectedSale.discount_percent,
             discountAmount: selectedSale.discount_amount,
+            observation: selectedSale.observation || null,
             total: selectedSale.amount,
         }
     })()
@@ -97,6 +112,87 @@ export default function PDVSalesList({ initialSales }) {
     const handlePrint = () => {
         if (!saleView || saleView.items.length === 0) return
         window.print()
+    }
+
+    // ----- Seleção p/ consolidado (só vendas em aberto) -----
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev)
+            if (next.has(id)) next.delete(id)
+            else next.add(id)
+            return next
+        })
+    }
+    const clearSelection = () => setSelectedIds(new Set())
+
+    // Mapeia as vendas selecionadas pro shape que o PDVConsolidatedPrint consome.
+    // Filtra sobre a lista completa (não a filtrada) pra seleção sobreviver a
+    // mudança de filtro. Defensivo: ignora ids que sumiram + vendas pagas.
+    const selectedSalesForReport = sales
+        .filter(s => selectedIds.has(s.id) && s.status === 'pending')
+        .map(s => {
+            const { client } = parseSale(s.description)
+            return {
+                id: s.id,
+                client,
+                date: s.date,
+                total: s.amount,
+                items: Array.isArray(s.items_snapshot) ? s.items_snapshot : [],
+                observation: s.observation || null,
+            }
+        })
+    const selectedTotal = selectedSalesForReport.reduce((acc, s) => acc + (Number(s.total) || 0), 0)
+
+    const openConsolidated = () => {
+        if (selectedSalesForReport.length === 0) return
+        setConsolidatedOpen(true)
+    }
+    const handlePrintConsolidated = () => {
+        if (selectedSalesForReport.length === 0) return
+        window.print()
+    }
+
+    // ----- Exclusão de venda -----
+    const handleDelete = async () => {
+        if (!deleteTarget) return
+        setDeleting(true)
+        try {
+            const res = await fetch(`/api/pdv/sales/${deleteTarget.id}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ restock: restockOnDelete }),
+            })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`)
+            toast.success(
+                restockOnDelete
+                    ? `Venda excluída. ${json.restocked || 0} item(ns) devolvido(s) ao estoque.`
+                    : 'Venda excluída (sem estorno de estoque).'
+            )
+            // Remove localmente + limpa seleção/modais e ressincroniza o SSR.
+            const removedId = deleteTarget.id
+            setSales(prev => prev.filter(s => s.id !== removedId))
+            setSelectedIds(prev => {
+                const next = new Set(prev)
+                next.delete(removedId)
+                return next
+            })
+            if (selectedSale?.id === removedId) setSelectedSale(null)
+            setDeleteTarget(null)
+            router.refresh()
+        } catch (e) {
+            toast.error('Erro ao excluir venda: ' + e.message)
+        } finally {
+            setDeleting(false)
+        }
+    }
+
+    // Abre o modal de exclusão; default do estorno = baixou estoque? Sim na
+    // maioria das vendas, então começa marcado.
+    const openDelete = (sale) => {
+        setRestockOnDelete(true)
+        setDeleteTarget(sale)
     }
 
     return (
@@ -209,7 +305,8 @@ export default function PDVSalesList({ initialSales }) {
                     <table className="w-full text-sm text-left text-gray-400">
                         <thead className="text-xs text-gray-200 uppercase bg-black">
                             <tr>
-                                <th className="px-4 py-3 rounded-tl-lg">Nº</th>
+                                <th className="px-4 py-3 rounded-tl-lg w-10" title="Selecionar vendas em aberto para o consolidado"></th>
+                                <th className="px-4 py-3">Nº</th>
                                 <th className="px-4 py-3">Cliente</th>
                                 <th className="px-4 py-3">Data</th>
                                 <th className="px-4 py-3">Pagamento</th>
@@ -224,6 +321,17 @@ export default function PDVSalesList({ initialSales }) {
                                 const badge = statusBadge(sale.status)
                                 return (
                                     <tr key={sale.id} className="border-b border-neutral-800 hover:bg-neutral-800 transition-colors">
+                                        <td className="px-4 py-3">
+                                            {sale.status === 'pending' ? (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedIds.has(sale.id)}
+                                                    onChange={() => toggleSelect(sale.id)}
+                                                    className="w-4 h-4 accent-red-600 cursor-pointer"
+                                                    title="Incluir no consolidado de pendências"
+                                                />
+                                            ) : null}
+                                        </td>
                                         <td className="px-4 py-3 font-medium text-white">#{sale.id}</td>
                                         <td className="px-4 py-3">{client}</td>
                                         <td className="px-4 py-3">{sale.date ? new Date(sale.date).toLocaleDateString('pt-BR') : '—'}</td>
@@ -233,12 +341,21 @@ export default function PDVSalesList({ initialSales }) {
                                             <span className={`px-2 py-1 rounded-md text-xs border ${badge.cls}`}>{badge.label}</span>
                                         </td>
                                         <td className="px-4 py-3 text-right">
-                                            <button
-                                                onClick={() => setSelectedSale(sale)}
-                                                className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium"
-                                            >
-                                                <Eye className="w-4 h-4" /> Ver
-                                            </button>
+                                            <div className="inline-flex items-center gap-3 justify-end">
+                                                <button
+                                                    onClick={() => setSelectedSale(sale)}
+                                                    className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 font-medium"
+                                                >
+                                                    <Eye className="w-4 h-4" /> Ver
+                                                </button>
+                                                <button
+                                                    onClick={() => openDelete(sale)}
+                                                    className="inline-flex items-center gap-1 text-red-500 hover:text-red-400 font-medium"
+                                                    title="Excluir venda (estorna estoque e cancela o lançamento)"
+                                                >
+                                                    <Trash2 className="w-4 h-4" /> Excluir
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 )
@@ -254,6 +371,33 @@ export default function PDVSalesList({ initialSales }) {
                         onPageSizeChange={pagination.setPageSize}
                         label="vendas"
                     />
+                </div>
+            )}
+
+            {/* Barra de seleção p/ consolidado — só vendas em aberto. */}
+            {selectedIds.size > 0 && (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 bg-black border border-red-700/50 rounded-xl p-4">
+                    <div className="text-sm text-gray-300">
+                        <span className="font-bold text-white">{selectedSalesForReport.length}</span> venda(s) em aberto selecionada(s) ·
+                        {' '}Devendo <span className="font-bold text-red-400">{formatMoney(selectedTotal)}</span>
+                    </div>
+                    <div className="flex gap-2 items-center">
+                        <button
+                            type="button"
+                            onClick={clearSelection}
+                            className="px-3 py-2 text-xs text-gray-400 hover:text-white underline whitespace-nowrap"
+                        >
+                            Limpar seleção
+                        </button>
+                        <button
+                            type="button"
+                            onClick={openConsolidated}
+                            disabled={selectedSalesForReport.length === 0}
+                            className="bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 whitespace-nowrap"
+                        >
+                            <FileText className="w-4 h-4" /> Consolidado
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
@@ -378,8 +522,142 @@ export default function PDVSalesList({ initialSales }) {
                 discountAmount={saleView.discountAmount}
                 total={saleView.total}
                 serviceDate={saleView.date}
+                observation={saleView.observation}
                 tenant={tenant}
             />
+        )}
+
+        {/* Modal do relatório consolidado de pendências. */}
+        {consolidatedOpen && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+                <div className="bg-neutral-900 border border-neutral-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+                    <div className="p-5 border-b border-neutral-800 flex justify-between items-start gap-3">
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Relatório Consolidado</h2>
+                            <p className="text-sm text-gray-400 mt-0.5">
+                                {selectedSalesForReport.length} venda(s) em aberto · Devendo {formatMoney(selectedTotal)}
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setConsolidatedOpen(false)}
+                            className="text-gray-500 hover:text-white transition"
+                            title="Fechar"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="p-5 space-y-3">
+                        <p className="text-sm text-gray-400">Tipo de relatório:</p>
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${reportType === 'synthetic' ? 'border-red-500 bg-red-500/10' : 'border-neutral-700 bg-black'}`}>
+                            <input
+                                type="radio"
+                                name="report-type"
+                                checked={reportType === 'synthetic'}
+                                onChange={() => setReportType('synthetic')}
+                                className="mt-1 accent-red-600"
+                            />
+                            <span>
+                                <span className="block font-bold text-white">Sintético</span>
+                                <span className="block text-xs text-gray-400">Resumo: data e valor de cada venda, sem detalhar itens.</span>
+                            </span>
+                        </label>
+                        <label className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition ${reportType === 'analytic' ? 'border-red-500 bg-red-500/10' : 'border-neutral-700 bg-black'}`}>
+                            <input
+                                type="radio"
+                                name="report-type"
+                                checked={reportType === 'analytic'}
+                                onChange={() => setReportType('analytic')}
+                                className="mt-1 accent-red-600"
+                            />
+                            <span>
+                                <span className="block font-bold text-white">Analítico</span>
+                                <span className="block text-xs text-gray-400">Detalhado: itens de cada venda + subtotais.</span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <div className="p-5 border-t border-neutral-800 flex gap-3">
+                        <button
+                            onClick={() => setConsolidatedOpen(false)}
+                            className="flex-1 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg font-medium transition"
+                        >
+                            Fechar
+                        </button>
+                        <button
+                            onClick={handlePrintConsolidated}
+                            className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
+                        >
+                            <Printer className="w-4 h-4" /> Imprimir / PDF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Print consolidado — renderizado só com o modal aberto pra não
+            conflitar com o recibo de venda individual (ambos usam print:flex). */}
+        {consolidatedOpen && (
+            <PDVConsolidatedPrint
+                sales={selectedSalesForReport}
+                reportType={reportType}
+                tenant={tenant}
+            />
+        )}
+
+        {/* Modal de exclusão de venda — estorno de estoque + cancelamento financeiro. */}
+        {deleteTarget && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden">
+                <div className="bg-neutral-900 border border-neutral-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+                    <div className="p-5 border-b border-neutral-800 flex items-start gap-3">
+                        <div className="p-2 rounded-xl bg-red-500/10 text-red-400">
+                            <Trash2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Excluir venda #{deleteTarget.id}</h2>
+                            <p className="text-sm text-gray-400 mt-0.5">
+                                {parseSale(deleteTarget.description).client} · {formatMoney(deleteTarget.amount)}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="p-5 space-y-4">
+                        <p className="text-sm text-gray-300">
+                            Isso vai <strong className="text-white">cancelar o lançamento financeiro</strong> desta venda.
+                            Esta ação não pode ser desfeita.
+                        </p>
+                        <label className="flex items-start gap-3 p-3 rounded-lg border border-neutral-700 bg-black cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={restockOnDelete}
+                                onChange={(e) => setRestockOnDelete(e.target.checked)}
+                                className="mt-1 accent-red-600 w-4 h-4"
+                            />
+                            <span>
+                                <span className="block font-bold text-white">Retornar itens ao estoque</span>
+                                <span className="block text-xs text-gray-400">
+                                    Desmarque se esta venda foi lançada sem baixar estoque (ex.: venda retroativa).
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                    <div className="p-5 border-t border-neutral-800 flex gap-3">
+                        <button
+                            onClick={() => setDeleteTarget(null)}
+                            disabled={deleting}
+                            className="flex-1 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white rounded-lg font-medium transition"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleDelete}
+                            disabled={deleting}
+                            className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
+                        >
+                            <Trash2 className="w-4 h-4" /> {deleting ? 'Excluindo...' : 'Excluir venda'}
+                        </button>
+                    </div>
+                </div>
+            </div>
         )}
         </>
     )

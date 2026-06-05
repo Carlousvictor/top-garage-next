@@ -1,6 +1,5 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { createClient } from '../utils/supabase/client'
 import { useAuth } from '../context/AuthContext'
 import CreatableSelect from 'react-select/creatable'
 import { Plus, Trash2, FileText, CheckCircle2, AlertCircle, Link2, Layers, Sparkles } from 'lucide-react'
@@ -32,7 +31,6 @@ const fmt = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency',
 // pra evitar AbortError de chamadas client-side da supabase quando a sessão
 // refresha durante o fluxo. Mesmo padrão do fluxo XML.
 export default function ManualStockEntry({ onEntryCreated }) {
-    const supabase = createClient()
     const { tenantId } = useAuth()
 
     const [suppliers, setSuppliers] = useState([])
@@ -49,6 +47,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
     const [freightAmount, setFreightAmount] = useState(0)
     const [discountMode, setDiscountMode] = useState('total') // 'total' | 'per_item'
     const [discountAmount, setDiscountAmount] = useState(0)   // só usado em modo 'total'
+    // Outras despesas: ICMS-ST, IPI, taxas etc. Diferente do frete, NÃO é rateado
+    // no custo dos produtos — entra só no total da NF e no lançamento financeiro.
+    const [otherExpenses, setOtherExpenses] = useState(0)
 
     // Pagamento
     const [paymentMode, setPaymentMode] = useState('upfront')
@@ -69,21 +70,22 @@ export default function ManualStockEntry({ onEntryCreated }) {
 
     useEffect(() => {
         if (!tenantId) return
+        // Server-side via /api/suppliers: a query client-side (supabase.from)
+        // travava silenciosamente quando o auth-token precisava refresh mid-call
+        // — a Promise nunca settlava e o dropdown de fornecedor ficava vazio.
+        // Mesmo motivo do cache de produtos logo abaixo.
         const fetchSuppliers = async () => {
-            // Filtro explícito por tenant_id (defesa em profundidade junto com RLS).
-            // Sem isso, sessão client-side ainda nao hidratada retornava lista vazia
-            // silenciosamente e o dropdown de fornecedor ficava sem opcoes.
-            const { data, error } = await supabase
-                .from('suppliers')
-                .select('id, name, cnpj')
-                .eq('tenant_id', tenantId)
-                .order('name')
-            if (error) {
-                console.error('Erro ao carregar fornecedores:', error)
-                addLog('Falha ao carregar fornecedores: ' + error.message, 'error')
-                return
+            try {
+                const res = await fetch('/api/suppliers', { credentials: 'include' })
+                const json = await res.json().catch(() => ({}))
+                if (!res.ok) {
+                    addLog('Falha ao carregar fornecedores: ' + (json.error || `HTTP ${res.status}`), 'error')
+                    return
+                }
+                setSuppliers(json.suppliers || [])
+            } catch (e) {
+                addLog('Falha ao carregar fornecedores: ' + e.message, 'error')
             }
-            setSuppliers(data || [])
         }
         fetchSuppliers()
     }, [tenantId])
@@ -248,8 +250,9 @@ export default function ManualStockEntry({ onEntryCreated }) {
         : items.reduce((acc, it) => acc + (parseFloat(it.discount_amount) || 0), 0)
 
     const freightApplied = parseFloat(freightAmount) || 0
+    const otherExpensesApplied = parseFloat(otherExpenses) || 0
 
-    const total = subtotalBruto + freightApplied - totalDiscountApplied
+    const total = subtotalBruto + freightApplied + otherExpensesApplied - totalDiscountApplied
 
     const handleAddInstallment = () => {
         setInstallments(prev => [...prev, {
@@ -284,6 +287,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
             }
         }
         if (freightApplied < 0) return 'Frete não pode ser negativo.'
+        if (otherExpensesApplied < 0) return 'Outras despesas não podem ser negativas.'
         if (discountMode === 'total') {
             const d = parseFloat(discountAmount) || 0
             if (d < 0) return 'Desconto não pode ser negativo.'
@@ -330,6 +334,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
                 linked_product_ids: Array.isArray(it.linked_product_ids) ? it.linked_product_ids : []
             })),
             freightAmount: freightApplied,
+            otherExpenses: otherExpensesApplied,
             discountMode,
             discountAmount: discountMode === 'total' ? (parseFloat(discountAmount) || 0) : 0,
             paymentMode,
@@ -362,6 +367,7 @@ export default function ManualStockEntry({ onEntryCreated }) {
             setInstallments([])
             setPaymentMode('upfront')
             setFreightAmount(0)
+            setOtherExpenses(0)
             setDiscountAmount(0)
             setDiscountMode('total')
 
@@ -460,6 +466,17 @@ export default function ManualStockEntry({ onEntryCreated }) {
                             className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
                         />
                         <p className="text-[11px] text-gray-500 mt-1">Rateado proporcionalmente nos custos dos itens.</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm text-gray-300 mb-1">Outras Despesas</label>
+                        <CurrencyInput
+                            value={otherExpenses}
+                            onChange={(n) => setOtherExpenses(n)}
+                            decimals={3}
+                            className="w-full bg-black border border-neutral-700 rounded-lg p-2.5 text-white"
+                        />
+                        <p className="text-[11px] text-gray-500 mt-1">Soma ao total da NF (não rateado no custo dos produtos).</p>
                     </div>
 
                     <div>
@@ -674,6 +691,11 @@ export default function ManualStockEntry({ onEntryCreated }) {
                                 <tr>
                                     <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Frete</td>
                                     <td className="px-2 py-1.5 text-right text-white">{fmt(freightApplied)}</td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td colSpan={discountMode === 'per_item' ? 8 : 7} className="px-2 py-1.5 text-right text-gray-400 uppercase text-xs">Outras Despesas</td>
+                                    <td className="px-2 py-1.5 text-right text-white">{fmt(otherExpensesApplied)}</td>
                                     <td></td>
                                 </tr>
                                 <tr>

@@ -45,6 +45,9 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     // Desconto em % aplicado sobre o subtotal — aditivo, opcional. 0 = sem desconto.
     // Limite 0..100; o total líquido é o que vai gravado em transactions.amount.
     const [discountPercent, setDiscountPercent] = useState('')
+    // Observações livres da venda — gravadas em transactions.observation e
+    // exibidas no recibo impresso. Opcional; vazio = nada gravado/impresso.
+    const [observation, setObservation] = useState('')
     // Data da venda — default = hoje. Permite cadastrar venda retroativa
     // pra importar histórico ou lançar venda esquecida.
     const todayLocalISO = (() => {
@@ -250,6 +253,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                     discountPercent: getDiscountPercent(),
                     subtotalAmount: calculateSubtotal(),
                     discountAmount: calculateDiscountAmount(),
+                    observation: observation.trim() || null,
                     total,
                     service_date_iso: (() => {
                         const [y, m, d] = serviceDate.split('-').map(Number)
@@ -272,6 +276,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
             setPayment1Amount('')
             setPayment2Amount('')
             setDiscountPercent('')
+            setObservation('')
             setServiceDate(todayLocalISO)
             setDeductStock(true)
             // router.refresh() preserva o toast de sucesso (window.location.reload
@@ -625,6 +630,18 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                             </p>
                         )}
                     </div>
+
+                    {/* Observações — texto livre gravado na venda e impresso no recibo. */}
+                    <div className="mt-4 mb-4">
+                        <label className="block text-sm text-gray-400 mb-2">Observações:</label>
+                        <textarea
+                            value={observation}
+                            onChange={(e) => setObservation(e.target.value)}
+                            rows={2}
+                            placeholder="Opcional — ex: garantia, pedido especial, nota do cliente..."
+                            className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg block w-full p-2.5 resize-y focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none"
+                        />
+                    </div>
                 </div>
 
                 <div>
@@ -693,6 +710,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
             discountAmount={calculateDiscountAmount()}
             total={calculateTotal()}
             serviceDate={serviceDate}
+            observation={observation}
             tenant={tenant}
         />
 
