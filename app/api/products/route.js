@@ -1,5 +1,6 @@
 import { createClient } from '@/utils/supabase/server'
 import { NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 
 export async function POST(request) {
     const supabase = await createClient()
@@ -76,6 +77,13 @@ export async function POST(request) {
         categories: p.category_id ? (catsMap[p.category_id] ?? null) : null,
         brands: p.brand_id ? (brsMap[p.brand_id] ?? null) : null,
     }))
+
+    // Invalida o cache das páginas que listam produtos via SSR. Sem isso, o PDV
+    // (app/pdv/page.js) e o estoque servem o snapshot antigo: criar/editar um
+    // produto não reflete no picker de venda. Mesmo padrão das rotas de entrada
+    // de NF (stock/entries, manual-entry) que já revalidam após mutar produtos.
+    revalidatePath('/pdv')
+    revalidatePath('/stock')
 
     return NextResponse.json({ products })
 }

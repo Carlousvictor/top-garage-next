@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 async function getTenantId(supabase, user) {
     // Dual-key: user_id is canonical, .id is legacy.
@@ -62,6 +63,13 @@ export async function DELETE(request, { params }) {
     if (deleteError) {
         return NextResponse.json({ error: 'Erro ao excluir produto: ' + deleteError.message }, { status: 500 })
     }
+
+    // Invalida o snapshot SSR das páginas que listam produtos. Sem isso o PDV
+    // (app/pdv/page.js) continua exibindo o produto excluído no picker de venda
+    // ("digitar pra vender" mostrava item já apagado). Mesmo padrão de
+    // revalidação usado em pdv/sales/[id] e stock/entries após mutação.
+    revalidatePath('/pdv')
+    revalidatePath('/stock')
 
     return NextResponse.json({ ok: true })
 }

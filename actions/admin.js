@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { invalidateProfileCache } from '@/lib/auth-cache'
 
 export async function createTenantAndAdmin(formData) {
     // 1. Validate inputs
@@ -110,9 +111,10 @@ export async function createTenantAndAdmin(formData) {
     return { success: true, message: `Empresa "${companyName}" cadastrada. Admin pode entrar com ${adminEmail}.` }
 }
 
-// Permite a super_admin "entrar como" outro tenant atualizando o próprio profile.tenant_id.
+// Permite a super_admin "entrar como" outro tenant setando profiles.acting_tenant_id.
 // Todas as queries subsequentes (via RLS + user_tenant_id()) passam a enxergar os dados
-// desse tenant. Pra voltar ao ambiente próprio basta entrar de novo no tenant "Garaje.io Admin".
+// desse tenant. O tenant de origem (tenant_id) NÃO é tocado — pra voltar ao modo
+// neutro (não ver dados de tenant nenhum) basta chamar exitTenant().
 export async function enterTenant(targetTenantId) {
     if (!targetTenantId) return { error: 'Empresa não informada.' }
 
@@ -161,10 +163,64 @@ export async function enterTenant(targetTenantId) {
 
     const { error: updateErr } = await supabaseAdmin
         .from('profiles')
-        .update({ tenant_id: tenant.id })
+        .update({ acting_tenant_id: tenant.id })
         .eq('user_id', user.id)
 
     if (updateErr) return { error: `Erro ao trocar de empresa: ${updateErr.message}` }
 
+    // Invalida o cache de auth em memória — sem isso o getAuthContext serviria
+    // por até 30s o tenant antigo e a UI mostraria dados/escopo errados.
+    invalidateProfileCache(user.id)
+
     return { success: true, tenantName: tenant.name }
+}
+
+// Sai do "modo empresa": zera acting_tenant_id, voltando o super_admin ao
+// estado neutro (não vê dados de tenant nenhum até entrar de novo). Não toca
+// no tenant_id de origem. Só super_admin pode chamar.
+export async function exitTenant() {
+    const cookieStore = await cookies()
+    const supabaseClient = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+            cookies: {
+                getAll() { return cookieStore.getAll() },
+                setAll() {}
+            },
+        }
+    )
+
+    const { data: { user } } = await supabaseClient.auth.getUser()
+    if (!user) return { error: 'Sessão inválida.' }
+
+    const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('role')
+        .eq('user_id', user.id)
+        .single()
+
+    if (profile?.role !== 'super_admin') {
+        return { error: 'Apenas super admins podem sair do modo empresa.' }
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!serviceRoleKey) return { error: 'Chave do servidor ausente.' }
+
+    const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        serviceRoleKey,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+    )
+
+    const { error: updateErr } = await supabaseAdmin
+        .from('profiles')
+        .update({ acting_tenant_id: null })
+        .eq('user_id', user.id)
+
+    if (updateErr) return { error: `Erro ao sair da empresa: ${updateErr.message}` }
+
+    invalidateProfileCache(user.id)
+
+    return { success: true }
 }

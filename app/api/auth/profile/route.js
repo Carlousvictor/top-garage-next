@@ -12,5 +12,6 @@ export async function GET() {
     return NextResponse.json({
         tenantId: auth.tenantId,
         role: auth.role,
+        actingTenantId: auth.actingTenantId ?? null,
     })
 }

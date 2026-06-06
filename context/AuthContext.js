@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 
 const AuthContext = createContext({})
 
-const EMPTY_AUTH = { user: null, tenantId: null, tenant: null, role: null }
+const EMPTY_AUTH = { user: null, tenantId: null, tenant: null, role: null, actingTenantId: null }
 
 export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
     const supabase = createClient()
@@ -18,6 +18,9 @@ export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
     const [tenantId, setTenantId] = useState(initialAuth.tenantId)
     const [tenant, setTenant] = useState(initialAuth.tenant)
     const [role, setRole] = useState(initialAuth.role)
+    // Tenant que o super_admin está inspecionando (NULL = modo neutro/admin).
+    // Usado pra exibir o botão "Sair da empresa" no Header.
+    const [actingTenantId, setActingTenantId] = useState(initialAuth.actingTenantId)
     // loading=false quando já temos user resolvido pelo servidor — sem precisar
     // esperar a primeira ida ao /api/auth/profile.
     const [loading, setLoading] = useState(!initialAuth.user)
@@ -43,6 +46,7 @@ export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
                 setTenantId(null)
                 setTenant(null)
                 setRole(null)
+                setActingTenantId(null)
                 setLoading(false)
                 if (window.location.pathname !== '/login') {
                     window.location.href = '/login'
@@ -80,10 +84,13 @@ export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
             if (!res.ok) return
 
             const profile = await res.json()
-            if (profile.tenantId) {
-                setTenantId(profile.tenantId)
-                setRole(profile.role)
+            // role e actingTenantId sempre atualizam — inclusive quando tenantId
+            // é null (super_admin em modo neutro), pra que o Header saiba o estado.
+            setRole(profile.role)
+            setActingTenantId(profile.actingTenantId ?? null)
+            setTenantId(profile.tenantId ?? null)
 
+            if (profile.tenantId) {
                 const { data: tenantData } = await supabase
                     .from('tenants')
                     .select('name, logo_url, primary_color, document')
@@ -91,6 +98,8 @@ export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
                     .maybeSingle()
 
                 if (tenantData) setTenant(tenantData)
+            } else {
+                setTenant(null)
             }
         } catch (error) {
             console.error('Error fetching tenant data:', error)
@@ -111,7 +120,7 @@ export const AuthProvider = ({ children, initialAuth = EMPTY_AUTH }) => {
     }
 
     return (
-        <AuthContext.Provider value={{ user, tenantId, companyId: tenantId, tenant, role, signOut, loading }}>
+        <AuthContext.Provider value={{ user, tenantId, companyId: tenantId, tenant, role, actingTenantId, signOut, loading }}>
             {children}
         </AuthContext.Provider>
     )

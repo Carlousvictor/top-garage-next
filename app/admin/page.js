@@ -34,18 +34,33 @@ export default function SuperAdminPage() {
                 return
             }
 
-            const { data: profile } = await supabase
+            // Leitura tolerante: acting_tenant_id pode não existir ainda (migration
+            // não rodada). Se faltar a coluna, faz fallback sem ela — não trava o /admin.
+            let profile = null
+            const r1 = await supabase
                 .from('profiles')
-                .select('role, tenant_id')
+                .select('role, tenant_id, acting_tenant_id')
                 .eq('user_id', user.id)
                 .single()
+            if (r1.error?.code === '42703') {
+                const rf = await supabase
+                    .from('profiles')
+                    .select('role, tenant_id')
+                    .eq('user_id', user.id)
+                    .single()
+                profile = rf.data
+            } else {
+                profile = r1.data
+            }
 
             if (profile?.role !== 'super_admin') {
                 router.push('/')
                 return
             }
 
-            setCurrentTenantId(profile.tenant_id)
+            // "Atual" = tenant que o super_admin está inspecionando (acting_tenant_id).
+            // null = modo neutro: nenhuma empresa marcada como atual.
+            setCurrentTenantId(profile.acting_tenant_id ?? null)
             setIsCheckingAdmin(false)
             fetchCompanies()
         } catch (error) {
@@ -57,7 +72,7 @@ export default function SuperAdminPage() {
     const handleEnter = async (tenantId, tenantName) => {
         if (tenantId === currentTenantId) {
             // Já estamos neste tenant — vai direto pro dashboard
-            router.push('/')
+            window.location.assign('/')
             return
         }
         setEntering(tenantId)
@@ -67,9 +82,11 @@ export default function SuperAdminPage() {
             setEntering(null)
             return
         }
-        // Navega pro dashboard do tenant recém-selecionado
-        router.push('/')
-        router.refresh()
+        // Navegação FULL (não router.push): força o AuthProvider a remontar e
+        // re-hidratar com o tenant recém-selecionado via SSR. Com router.push +
+        // refresh o contexto client ficava com tenant=null (estado do modo neutro)
+        // e o dashboard travava na saudação "Carregando empresa...".
+        window.location.assign('/')
     }
 
     const fetchCompanies = async () => {

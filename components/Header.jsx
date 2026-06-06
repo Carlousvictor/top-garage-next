@@ -1,10 +1,11 @@
 "use client"
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
+import { exitTenant } from '@/actions/admin'
 
-import { LogOut, Shield } from 'lucide-react'
+import { LogOut, Shield, ArrowLeft, DoorOpen } from 'lucide-react'
 
 // Fallback de marca quando NÃO temos logo do tenant (raro — só em /admin ou
 // edge case com tenant sem logo_url cadastrado). Mesma var que o /login usa.
@@ -25,10 +26,26 @@ function BrandFallback({ className }) {
 
 export default function Header() {
     const pathname = usePathname()
-    const { tenant, loading, signOut, role } = useAuth()
+    const router = useRouter()
+    const { tenant, loading, signOut, role, actingTenantId } = useAuth()
 
     // Hide header on login page to allow explicit centering there
     if (pathname === '/login') return null
+
+    // Botão "Voltar" volta pra página anterior (router.back), não pra home.
+    // Escondido na home ('/') porque lá não há pra onde voltar dentro do app.
+    const showBack = pathname !== '/'
+
+    // super_admin "dentro" de um tenant (inspecionando). Mostra atalho de saída.
+    const isActingAsTenant = role === 'super_admin' && !!actingTenantId
+
+    const handleExitTenant = async () => {
+        const result = await exitTenant()
+        if (result?.error) return
+        // Navegação FULL (não router.push): remonta o AuthProvider no modo neutro.
+        // router.push+refresh deixaria o contexto client com o tenant antigo.
+        window.location.assign('/admin')
+    }
 
     const isAdminMode = pathname.startsWith('/admin')
     const logoSrc = tenant?.logo_url
@@ -68,8 +85,31 @@ export default function Header() {
                 </div>
             )}
 
-            {/* Área direita: atalho pra /admin (se super_admin fora do /admin) + Sair */}
+            {/* Área direita: Sair da empresa (super_admin inspecionando) + Voltar
+                + atalho pra /admin + Sair do sistema */}
             <div className="flex items-center gap-2">
+                {isActingAsTenant && (
+                    <button
+                        onClick={handleExitTenant}
+                        className="flex items-center gap-2 text-amber-300 hover:text-amber-200 transition-colors bg-amber-500/15 hover:bg-amber-500/25 px-4 py-2 rounded-md border border-amber-500/40 shadow-sm"
+                        title={`Você está inspecionando ${tenant?.name || 'um tenant'} como super admin. Clique para sair.`}
+                    >
+                        <DoorOpen size={16} />
+                        <span className="text-sm font-medium uppercase tracking-wider">
+                            Sair de {tenant?.name || 'empresa'}
+                        </span>
+                    </button>
+                )}
+                {showBack && (
+                    <button
+                        onClick={() => router.back()}
+                        className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors bg-neutral-900/40 hover:bg-neutral-900 px-4 py-2 rounded-md border border-neutral-800/60 shadow-sm"
+                        title="Voltar para a página anterior"
+                    >
+                        <ArrowLeft size={18} />
+                        <span className="text-sm font-medium uppercase tracking-wider">Voltar</span>
+                    </button>
+                )}
                 {role === 'super_admin' && !isAdminMode && (
                     <Link
                         href="/admin"

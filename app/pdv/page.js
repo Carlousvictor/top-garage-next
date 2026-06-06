@@ -1,6 +1,12 @@
 import { createClient } from '@/utils/supabase/server'
 import POSForm from '@/components/POSForm'
 
+// Render server-side em toda visita: garante que a lista de produtos (initialProducts)
+// reflita exclusões/edições feitas no estoque. Sem isso, o picker de venda servia o
+// snapshot SSR cacheado — item excluído ainda aparecia e preço editado não atualizava.
+// Espelha app/stock/page.js. revalidatePath('/pdv') nas rotas de produto complementa.
+export const dynamic = 'force-dynamic'
+
 export default async function PDVPage() {
     // Carrega clientes E produtos no servidor pra evitar race condition do useEffect
     // client-side: a sessão Supabase aqui já está hidratada via cookie, então
