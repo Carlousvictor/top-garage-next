@@ -35,6 +35,8 @@ export default function PDVSalesList({ initialSales }) {
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     const [consolidatedOpen, setConsolidatedOpen] = useState(false)
     const [reportType, setReportType] = useState('synthetic') // 'synthetic' | 'analytic'
+    // Reimpressão na térmica (MPT-II) a partir do items_snapshot da venda salva.
+    const [thermalLoading, setThermalLoading] = useState(false)
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
 
@@ -112,6 +114,44 @@ export default function PDVSalesList({ initialSales }) {
     const handlePrint = () => {
         if (!saleView || saleView.items.length === 0) return
         window.print()
+    }
+
+    // Reimprime a venda salva na impressora térmica MPT-II (ESC/POS) via rota
+    // server-side. Usa os itens do snapshot da transação.
+    const handlePrintThermal = async () => {
+        if (!saleView || saleView.items.length === 0) return
+        setThermalLoading(true)
+        try {
+            const res = await fetch('/api/pdv/print-thermal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    items: saleView.items.map(it => ({
+                        name: it.name || it.description,
+                        quantity: it.quantity,
+                        unit_price: it.unit_price,
+                    })),
+                    clientLabel: saleView.client,
+                    paymentMethod: saleView.method,
+                    splitPayment: false,
+                    subtotal: saleView.subtotal,
+                    discountPercent: saleView.discountPercent,
+                    discountAmount: saleView.discountAmount,
+                    total: saleView.total,
+                    serviceDate: saleView.date,
+                    observation: saleView.observation,
+                    tenant,
+                }),
+            })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(json.error || `Erro HTTP ${res.status}`)
+            toast.success('Recibo enviado para a impressora térmica.')
+        } catch (e) {
+            toast.error('Impressão térmica: ' + e.message)
+        } finally {
+            setThermalLoading(false)
+        }
     }
 
     // ----- Seleção p/ consolidado (só vendas em aberto) -----
@@ -504,6 +544,14 @@ export default function PDVSalesList({ initialSales }) {
                             className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
                         >
                             <Printer className="w-4 h-4" /> Imprimir / PDF
+                        </button>
+                        <button
+                            onClick={handlePrintThermal}
+                            disabled={saleView.items.length === 0 || thermalLoading}
+                            title={saleView.items.length === 0 ? 'Sem itens registrados para imprimir' : 'Reimprimir na impressora térmica MPT-II'}
+                            className="flex-1 px-4 py-3 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
+                        >
+                            <Printer className="w-4 h-4" /> {thermalLoading ? 'Imprimindo...' : 'Térmica'}
                         </button>
                     </div>
                 </div>

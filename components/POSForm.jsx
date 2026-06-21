@@ -59,6 +59,8 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     // retroativas (item já saiu no passado), operador deve desmarcar.
     const [deductStock, setDeductStock] = useState(true)
     const [loading, setLoading] = useState(false)
+    // Impressão térmica (MPT-II) via rota server-side — independente do loading do checkout.
+    const [thermalLoading, setThermalLoading] = useState(false)
 
     // Resolve o nome do cliente pra gravar na descrição da transação.
     // Hierarquia: cliente selecionado > nome digitado > "Consumidor" (padrão).
@@ -301,6 +303,49 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     const handlePrint = () => {
         if (cart.length === 0) return
         window.print()
+    }
+
+    // Imprime o recibo na impressora térmica MPT-II (ESC/POS) via /api/pdv/print-thermal.
+    // Roda server-side (Node) porque o browser não acessa a porta serial Bluetooth.
+    // Independe do checkout: falhar aqui não desfaz nem bloqueia a venda.
+    const handlePrintThermal = async () => {
+        if (cart.length === 0) return
+        setThermalLoading(true)
+        try {
+            const isSplit = splitPayment
+            const payments = isSplit
+                ? [
+                    { method: payment1Method, amount: parseFloat(payment1Amount) || 0 },
+                    { method: payment2Method, amount: parseFloat(payment2Amount) || 0 },
+                ]
+                : null
+            const res = await fetch('/api/pdv/print-thermal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    items: cart.map(i => ({ name: i.name, quantity: i.quantity, unit_price: i.unit_price })),
+                    clientLabel: resolveClientLabel(),
+                    paymentMethod,
+                    splitPayment: isSplit,
+                    payments,
+                    subtotal: calculateSubtotal(),
+                    discountPercent: getDiscountPercent(),
+                    discountAmount: calculateDiscountAmount(),
+                    total: calculateTotal(),
+                    serviceDate,
+                    observation: observation.trim() || null,
+                    tenant,
+                }),
+            })
+            const json = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(json.error || `Erro HTTP ${res.status}`)
+            toast.success('Recibo enviado para a impressora térmica.')
+        } catch (error) {
+            toast.error('Impressão térmica: ' + error.message)
+        } finally {
+            setThermalLoading(false)
+        }
     }
 
     // Tema escuro do react-select alinhado com o resto do app
@@ -691,6 +736,16 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                         title="Imprimir recibo da venda atual (carrinho)."
                     >
                         Imprimir / PDF
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handlePrintThermal}
+                        disabled={thermalLoading || cart.length === 0}
+                        className="w-full mt-3 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 text-white py-2.5 rounded-lg font-bold text-sm transition-colors"
+                        title="Imprimir recibo na impressora térmica MPT-II (balcão)."
+                    >
+                        {thermalLoading ? 'Imprimindo...' : 'Imprimir (térmica)'}
                     </button>
                 </div>
             </div>
