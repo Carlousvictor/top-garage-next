@@ -8,6 +8,7 @@ import { Search, X, Eye, Printer, FileText, Trash2 } from 'lucide-react'
 import Pagination, { usePagination } from './Pagination'
 import PDVSalePrint from './PDVSalePrint'
 import PDVConsolidatedPrint from './PDVConsolidatedPrint'
+import { printSaleThermal } from '@/lib/printThermalClient'
 
 // Listagem das vendas do PDV (balcão). Espelha a UX da ServiceOrderList:
 // busca livre + filtro de status (pills) + range de data + paginação.
@@ -116,36 +117,29 @@ export default function PDVSalesList({ initialSales }) {
         window.print()
     }
 
-    // Reimprime a venda salva na impressora térmica MPT-II (ESC/POS) via rota
-    // server-side. Usa os itens do snapshot da transação.
+    // Reimprime a venda salva na impressora térmica MPT-II (ESC/POS) via Web
+    // Serial API, direto do browser. Usa os itens do snapshot da transação.
     const handlePrintThermal = async () => {
         if (!saleView || saleView.items.length === 0) return
         setThermalLoading(true)
         try {
-            const res = await fetch('/api/pdv/print-thermal', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                    items: saleView.items.map(it => ({
-                        name: it.name || it.description,
-                        quantity: it.quantity,
-                        unit_price: it.unit_price,
-                    })),
-                    clientLabel: saleView.client,
-                    paymentMethod: saleView.method,
-                    splitPayment: false,
-                    subtotal: saleView.subtotal,
-                    discountPercent: saleView.discountPercent,
-                    discountAmount: saleView.discountAmount,
-                    total: saleView.total,
-                    serviceDate: saleView.date,
-                    observation: saleView.observation,
-                    tenant,
-                }),
+            await printSaleThermal({
+                items: saleView.items.map(it => ({
+                    name: it.name || it.description,
+                    quantity: it.quantity,
+                    unit_price: it.unit_price,
+                })),
+                clientLabel: saleView.client,
+                paymentMethod: saleView.method,
+                splitPayment: false,
+                subtotal: saleView.subtotal,
+                discountPercent: saleView.discountPercent,
+                discountAmount: saleView.discountAmount,
+                total: saleView.total,
+                serviceDate: saleView.date,
+                observation: saleView.observation,
+                tenant,
             })
-            const json = await res.json().catch(() => ({}))
-            if (!res.ok) throw new Error(json.error || `Erro HTTP ${res.status}`)
             toast.success('Recibo enviado para a impressora térmica.')
         } catch (e) {
             toast.error('Impressão térmica: ' + e.message)
