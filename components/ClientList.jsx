@@ -292,12 +292,17 @@ export default function ClientList({ initialClients }) {
     const filteredClients = (() => {
         const q = normalize(searchText)
         if (!q) return clients
+        // Placa pode estar gravada com ou sem hífen (ABC-1234 / ABC1234);
+        // normaliza ambos os lados removendo não-alfanuméricos pra casar igual.
+        const qPlate = q.replace(/[^a-z0-9]/g, '')
         return clients.filter(c =>
             normalize(c.name).includes(q) ||
             normalize(c.phone).includes(q) ||
             normalize(c.email).includes(q) ||
             normalize(c.document).includes(q) ||
-            normalize(c.client_number).includes(q)
+            normalize(c.client_number).includes(q) ||
+            (qPlate && (c.vehicles || []).some(v =>
+                normalize(v.plate).replace(/[^a-z0-9]/g, '').includes(qPlate)))
         )
     })()
 
@@ -407,7 +412,7 @@ export default function ClientList({ initialClients }) {
                             type="text"
                             value={searchText}
                             onChange={(e) => setSearchText(e.target.value)}
-                            placeholder="Buscar por nº, nome, telefone, e-mail ou CPF/CNPJ..."
+                            placeholder="Buscar por nº, nome, telefone, e-mail, CPF/CNPJ ou placa..."
                             className="w-full bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg pl-9 pr-9 py-2.5 focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition"
                         />
                         {searchText && (

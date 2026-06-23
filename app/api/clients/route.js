@@ -83,7 +83,7 @@ export async function GET() {
 
     const { data, error } = await supabase
         .from('clients')
-        .select('*')
+        .select('*, vehicles(plate)')
         .eq('tenant_id', tenantId)
         .order('client_number', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true })
@@ -191,7 +191,7 @@ export async function POST(request) {
 
     const { data: clients } = await supabase
         .from('clients')
-        .select('*')
+        .select('*, vehicles(plate)')
         .eq('tenant_id', tenantId)
         .order('client_number', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true })
