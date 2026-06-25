@@ -8,7 +8,7 @@ import { Search, X, Eye, Printer, FileText, Trash2 } from 'lucide-react'
 import Pagination, { usePagination } from './Pagination'
 import PDVSalePrint from './PDVSalePrint'
 import PDVConsolidatedPrint from './PDVConsolidatedPrint'
-import { printSaleThermal } from '@/lib/printThermalClient'
+import { printSaleReceiptThermal } from '@/lib/printThermalBrowser'
 
 // Listagem das vendas do PDV (balcão). Espelha a UX da ServiceOrderList:
 // busca livre + filtro de status (pills) + range de data + paginação.
@@ -36,7 +36,7 @@ export default function PDVSalesList({ initialSales }) {
     const [selectedIds, setSelectedIds] = useState(() => new Set())
     const [consolidatedOpen, setConsolidatedOpen] = useState(false)
     const [reportType, setReportType] = useState('synthetic') // 'synthetic' | 'analytic'
-    // Reimpressão na térmica (MPT-II) a partir do items_snapshot da venda salva.
+    // Reimpressão térmica 58mm (navegador) a partir do items_snapshot da venda salva.
     const [thermalLoading, setThermalLoading] = useState(false)
 
     const normalize = (v) => String(v ?? '').toLowerCase().trim()
@@ -117,13 +117,13 @@ export default function PDVSalesList({ initialSales }) {
         window.print()
     }
 
-    // Reimprime a venda salva na impressora térmica MPT-II (ESC/POS) via Web
-    // Serial API, direto do browser. Usa os itens do snapshot da transação.
+    // Reimprime a venda salva no recibo térmico 58mm via navegador (driver da
+    // impressora padrão). Usa os itens do snapshot da transação.
     const handlePrintThermal = async () => {
         if (!saleView || saleView.items.length === 0) return
         setThermalLoading(true)
         try {
-            await printSaleThermal({
+            await printSaleReceiptThermal({
                 items: saleView.items.map(it => ({
                     name: it.name || it.description,
                     quantity: it.quantity,
@@ -140,7 +140,6 @@ export default function PDVSalesList({ initialSales }) {
                 observation: saleView.observation,
                 tenant,
             })
-            toast.success('Recibo enviado para a impressora térmica.')
         } catch (e) {
             toast.error('Impressão térmica: ' + e.message)
         } finally {
@@ -542,7 +541,7 @@ export default function PDVSalesList({ initialSales }) {
                         <button
                             onClick={handlePrintThermal}
                             disabled={saleView.items.length === 0 || thermalLoading}
-                            title={saleView.items.length === 0 ? 'Sem itens registrados para imprimir' : 'Reimprimir na impressora térmica MPT-II'}
+                            title={saleView.items.length === 0 ? 'Sem itens registrados para imprimir' : 'Reimprimir recibo térmico 58mm na impressora padrão'}
                             className="flex-1 px-4 py-3 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg font-bold flex items-center justify-center gap-2 transition"
                         >
                             <Printer className="w-4 h-4" /> {thermalLoading ? 'Imprimindo...' : 'Térmica'}
