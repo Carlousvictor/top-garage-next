@@ -10,7 +10,7 @@ import CreatableSelect from 'react-select/creatable'
 import Select from 'react-select'
 import QuickProductModal from './QuickProductModal'
 import PDVSalePrint from './PDVSalePrint'
-import { printSaleThermal, configurePrinter } from '@/lib/printThermalClient'
+import { printSaleReceiptThermal } from '@/lib/printThermalBrowser'
 
 export default function POSForm({ initialClients = [], initialProducts = [] }) {
     const supabase = createClient()
@@ -60,7 +60,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
     // retroativas (item já saiu no passado), operador deve desmarcar.
     const [deductStock, setDeductStock] = useState(true)
     const [loading, setLoading] = useState(false)
-    // Impressão térmica (MPT-II) via rota server-side — independente do loading do checkout.
+    // Impressão térmica 58mm via navegador — independente do loading do checkout.
     const [thermalLoading, setThermalLoading] = useState(false)
 
     // Resolve o nome do cliente pra gravar na descrição da transação.
@@ -306,9 +306,11 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
         window.print()
     }
 
-    // Imprime o recibo na impressora térmica MPT-II (ESC/POS) via Web Serial API,
-    // direto do browser — funciona em qualquer PC Chrome/Edge com a impressora
-    // como porta COM. Independe do checkout: falhar aqui não desfaz a venda.
+    // Imprime o recibo térmico 58mm via navegador (driver da impressora padrão).
+    // Renderiza HTML 58mm num iframe isolado e chama print() — alcança qualquer
+    // impressora instalada (POS58 USB, etc.), sem porta serial nem servidor,
+    // então funciona com a app no Vercel. Independe do checkout: falhar aqui
+    // não desfaz a venda.
     const handlePrintThermal = async () => {
         if (cart.length === 0) return
         setThermalLoading(true)
@@ -320,7 +322,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                     { method: payment2Method, amount: parseFloat(payment2Amount) || 0 },
                 ]
                 : null
-            await printSaleThermal({
+            await printSaleReceiptThermal({
                 items: cart.map(i => ({ name: i.name, quantity: i.quantity, unit_price: i.unit_price })),
                 clientLabel: resolveClientLabel(),
                 paymentMethod,
@@ -334,23 +336,8 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                 observation: observation.trim() || null,
                 tenant,
             })
-            toast.success('Recibo enviado para a impressora térmica.')
         } catch (error) {
             toast.error('Impressão térmica: ' + error.message)
-        } finally {
-            setThermalLoading(false)
-        }
-    }
-
-    // Setup da impressora numa máquina nova: abre o seletor de porta e imprime
-    // um recibo de teste. Depois disso o navegador lembra a porta (impressão silenciosa).
-    const handleConfigurePrinter = async () => {
-        setThermalLoading(true)
-        try {
-            await configurePrinter()
-            toast.success('Impressora configurada — recibo de teste enviado.')
-        } catch (error) {
-            toast.error('Configuração da impressora: ' + error.message)
         } finally {
             setThermalLoading(false)
         }
@@ -751,18 +738,9 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                         onClick={handlePrintThermal}
                         disabled={thermalLoading || cart.length === 0}
                         className="w-full mt-3 bg-blue-700 hover:bg-blue-600 disabled:opacity-40 text-white py-2.5 rounded-lg font-bold text-sm transition-colors"
-                        title="Imprimir recibo na impressora térmica MPT-II (balcão)."
+                        title="Imprimir recibo térmico 58mm na impressora padrão (balcão)."
                     >
                         {thermalLoading ? 'Imprimindo...' : 'Imprimir (térmica)'}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleConfigurePrinter}
-                        disabled={thermalLoading}
-                        className="w-full mt-3 bg-neutral-800 hover:bg-neutral-700 disabled:opacity-40 text-gray-300 py-2 rounded-lg font-medium text-xs transition-colors"
-                        title="Selecionar a porta da impressora térmica neste computador (uma vez por máquina) e imprimir um teste."
-                    >
-                        Configurar impressora
                     </button>
                 </div>
             </div>
