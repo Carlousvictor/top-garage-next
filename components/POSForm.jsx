@@ -462,7 +462,7 @@ export default function POSForm({ initialClients = [], initialProducts = [] }) {
                                             max={item.max_quantity}
                                             value={item.quantity}
                                             onChange={(e) => updateQuantity(idx, parseInt(e.target.value) || 1)}
-                                            className="w-16 bg-neutral-800 border border-neutral-700 rounded p-1 text-center text-white"
+                                            className="w-16 bg-neutral-800 border border-neutral-700 rounded p-1 text-center text-white [color-scheme:dark]"
                                         />
                                     </td>
                                     <td className="px-4 py-3 text-right">
